@@ -323,6 +323,9 @@ void RADIO_EndRX(void)
 		switch (gExtendedSettings.ScanResume) {
 			case 1:		// Carrier Operated
 				SCANNER_Countdown = 3000;
+				// Implicit fallthrough
+				gpio_bits_reset(GPIOA, BOARD_GPIOA_LED_GREEN);
+				break;
 			case 2:		// Time Operated
 				gpio_bits_reset(GPIOA, BOARD_GPIOA_LED_GREEN);
 				break;

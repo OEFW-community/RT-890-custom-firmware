@@ -64,7 +64,7 @@ static uint8_t LoadAndDraw(uint8_t X, uint8_t Y, uint32_t Offset)
 	}
 }
 
-void FONT_Draw(uint8_t X, uint8_t Y, const uint32_t *pOffsets, uint32_t Count)
+void FONT_Draw(uint8_t X, uint8_t Y, uint32_t Count)
 {
 	uint8_t i, x;
 

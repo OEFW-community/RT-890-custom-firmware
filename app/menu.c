@@ -601,7 +601,7 @@ void MENU_AcceptSetting(void)
 			for (i = 0; i < 8; i++) {
 				gSettingGolay = (gSettingGolay * 10) + (gInputBox[i] - '0');
 			}
-			if (gSettingGolay < 0x1000000) {
+			if (gSettingGolay != 0) {
 				return;
 			}
 			// Illegal code
