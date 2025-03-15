@@ -43,7 +43,7 @@ static void Init(void)
 	};
 
 
-	for (int i = 0; i < ARRAY_SIZE(init_0x9_values); i++) {
+	for (unsigned int i = 0; i < ARRAY_SIZE(init_0x9_values); i++) {
 		BK4819_WriteRegister(0x09, init_0x9_values[i]);
 	}
 

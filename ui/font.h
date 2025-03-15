@@ -20,7 +20,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-void FONT_Draw(uint8_t X, uint8_t Y, const uint32_t *pOffsets, uint32_t Count);
+void FONT_Draw(uint8_t X, uint8_t Y, uint32_t Count);
 uint8_t FONT_GetOffsets(const char *String, uint8_t Size, bool bFlag);
 
 #endif

@@ -5,25 +5,25 @@ MOTO_STARTUP_TONE		?= 1
 ENABLE_AM_FIX			?= 1
 ENABLE_ALT_SQUELCH		?= 1
 ENABLE_STATUS_BAR_LINE		?= 0
-ENABLE_NOAA			?= 1
+ENABLE_NOAA			?= 0
 ENABLE_RX_BAR			?= 1
 ENABLE_TX_BAR			?= 1
 ENABLE_SLOWER_RSSI_TIMER	?= 1
-ENABLE_SPECTRUM			?= 1
-ENABLE_KEEP_MONITOR_MODE_UP_DN	?= 0
-PCB_VER_2_1			?= 0
+ENABLE_SPECTRUM			?= 0
+ENABLE_KEEP_MONITOR_MODE_UP_DN	?= 1
+PCB_VER_2_1			?= 1
 
 
 # Spectrum presets - 1.4 kB
-ENABLE_SPECTRUM_PRESETS		?= 1
+ENABLE_SPECTRUM_PRESETS		?= 0
 # FM radio = 2.6 kB
 ENABLE_FM_RADIO			?= 1
 # Register Editor = .5 kB
 ENABLE_REGISTER_EDIT		?= 0
 # Scanlist membership display - 252 B
-ENABLE_SCANLIST_DISPLAY		?= 1
+ENABLE_SCANLIST_DISPLAY		?= 0
 # Space saving options
-ENABLE_LTO			?= 0
+ENABLE_LTO			?= 1
 ENABLE_OPTIMIZED		?= 1
 
 
@@ -166,7 +166,8 @@ GIT_HASH := $(GIT_HASH_TMP)
 endif
 
 ASFLAGS = -mcpu=cortex-m4
-CFLAGS = -Os -Wall -Werror -mcpu=cortex-m4 -fno-builtin -fshort-enums -fno-delete-null-pointer-checks -std=c2x -MMD
+CFLAGS = -Os -Wall -Werror -mcpu=cortex-m4 -pipe -free -freorder-blocks-algorithm=stc -std=c2x -MMD
+#CFLAGS += -Wextra
 CFLAGS += -DAT32F421C8T7
 CFLAGS += -DPRINTF_INCLUDE_CONFIG_H
 CFLAGS += -DGIT_HASH=\"$(GIT_HASH)\"
@@ -176,12 +177,9 @@ ifeq ($(ENABLE_OPTIMIZED),1)
 CFLAGS += --specs=nano.specs
 LDFLAGS += --specs=nano.specs
 
+# Only takes effect when LTO is disabled
 CFLAGS += -ffunction-sections
 LDFLAGS += -Wl,--gc-sections
-
-CFLAGS += -finline-limit=0
-
-CFLAGS += -fmerge-all-constants
 endif
  
 ifeq ($(DEBUG),1)

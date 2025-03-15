@@ -44,7 +44,7 @@ void PWM_Pulse(uint16_t Data)
 
 	tmr_para_init_ex1(&init);
 	init.ch1_output_control_mode = TMR_OUTPUT_CONTROL_PWM_MODE_A;
-	init.ch1_polarity = TMR_POLARITY_ACTIVE_HIGH;
+	init.ch1_polarity = (tmr_output_polarity_type)TMR_POLARITY_ACTIVE_HIGH;
 	init.ch1_enable = TRUE;
 	init.ch1_digital_filter = Data;
 	tmr_reset_ex1(TMR3, &init);

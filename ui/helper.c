@@ -226,7 +226,7 @@ static const uint8_t BitmapRadar[] = {
 
 void UI_DrawString(uint8_t X, uint8_t Y, const char *pString, uint8_t Size)
 {
-	FONT_Draw(X, Y, SFLASH_FontOffsets, FONT_GetOffsets(pString, Size, true));
+	FONT_Draw(X, Y, FONT_GetOffsets(pString, Size, true));
 }
 
 void UI_DrawSmallCharacter(uint8_t X, uint8_t Y, char Digit)
@@ -714,7 +714,7 @@ void UI_DrawDTMF(void)
 
 void UI_DrawFMFrequency(uint16_t Frequency)
 {
-	Int2Ascii(gSettings.FmFrequency, 4);
+	Int2Ascii(Frequency, 4);
 	gShortString[4] = gShortString[3];
 	gShortString[3] = '.';
 	gColorForeground = COLOR_BLUE;
@@ -963,11 +963,12 @@ void UI_DrawGolay(void)
 	for (i = 0; i < 8; i++) {
 		gSettingGolay = (gSettingGolay * 10) + (gInputBox[i] - '0');
 	}
-	if (gSettingGolay > 0xFFFFFF) {
-		gSettingGolay &= 0xFFFFFF;
-		Int2Ascii(gSettingGolay, 8);
-		UI_DrawString(24, 24, gShortString, 8);
+	if (gSettingGolay != 0) {
+		return;
 	}
+	gSettingGolay &= 0xFFFFFF;
+	Int2Ascii(gSettingGolay, 8);
+	UI_DrawString(24, 24, gShortString, 8);
 }
 
 void UI_DrawChannelNumber(const char *pString)
