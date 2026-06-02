@@ -103,7 +103,7 @@ void KeypressAction(uint8_t Action) {
 	}
 
 	if (gScannerMode) {
-		if (Action == ACTION_SCAN && gSettings.WorkMode) {
+		if (Action == ACTION_SCAN && WORKMODE(gSettings.CurrentVfo)) {
 			Next_ScanList();
 		} else {
 			SETTINGS_SaveState();
@@ -170,7 +170,7 @@ void KeypressAction(uint8_t Action) {
 
 			// This action acts like previous for when used from sidekeys and like "1 call" when used from keyboard
 			case ACTION_PRESET_CHANNEL:
-				if (gSettings.WorkMode) {
+				if (WORKMODE(gSettings.CurrentVfo)) {
 					gInputBoxWriteIndex = 0;
 					uint8_t Slot = (gSlot < 4 ? gSlot : 0);
 					if (CHANNELS_LoadChannel(gSettings.PresetChannels[Slot], gSettings.CurrentVfo)) {
@@ -230,7 +230,7 @@ void KeypressAction(uint8_t Action) {
 				break;
 
 			case ACTION_SCAN:
-				gScanStartFreqOrChannel = gSettings.WorkMode ? gSettings.VfoChNo[gSettings.CurrentVfo] : gVfoInfo[gSettings.CurrentVfo].Frequency;
+				gScanStartFreqOrChannel = WORKMODE(gSettings.CurrentVfo) ? gSettings.VfoChNo[gSettings.CurrentVfo] : gVfoInfo[gSettings.CurrentVfo].Frequency;
 				gScanLastRxFreqOrChannel = gScanStartFreqOrChannel;
 				RADIO_CancelMode();
 				gManualScanDirection = gSettings.ScanDirection;
@@ -332,7 +332,7 @@ void KeypressAction(uint8_t Action) {
 				break;
 
 			case ACTION_TOGGLE_SCANLIST:
-				if (gSettings.WorkMode && !gExtendedSettings.ScanAll) {
+				if (WORKMODE(gSettings.CurrentVfo) && !gExtendedSettings.ScanAll) {
 					gVfoState[gSettings.CurrentVfo].IsInscanList ^= (1 << gExtendedSettings.CurrentScanList);
 					CHANNELS_SaveVfo();
 					UI_DrawDialogText(DIALOG_TOGGLE_SCANLIST, ((gVfoState[gSettings.CurrentVfo].IsInscanList >> gExtendedSettings.CurrentScanList) & 1));

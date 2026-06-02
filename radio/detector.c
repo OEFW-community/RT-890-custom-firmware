@@ -104,7 +104,7 @@ static void UpdateBand(bool bToggleBand)
 
 static void CtdcScan(void)
 {
-	if (gSettings.WorkMode) {
+	if (WORKMODE(gSettings.CurrentVfo)) {
 		CHANNELS_LoadChannel(gSettings.VfoChNo[gSettings.CurrentVfo], gSettings.CurrentVfo);
 	} else {
 		CHANNELS_LoadChannel(gSettings.CurrentVfo ? 1000 : 999, gSettings.CurrentVfo);
@@ -120,11 +120,15 @@ static void StopDetect(void)
 	gFrequencyDetectMode = false;
 	SCREEN_TurnOn();
 
-	if (gSettings.WorkMode) {
+	// Restore each VFO in its own mode.
+	if (WORKMODE(!gSettings.CurrentVfo)) {
 		CHANNELS_LoadChannel(gSettings.VfoChNo[!gSettings.CurrentVfo], !gSettings.CurrentVfo);
+	} else {
+		CHANNELS_LoadChannel((!gSettings.CurrentVfo) ? 1000 : 999, !gSettings.CurrentVfo);
+	}
+	if (WORKMODE(gSettings.CurrentVfo)) {
 		CHANNELS_LoadChannel(gSettings.VfoChNo[gSettings.CurrentVfo], gSettings.CurrentVfo);
 	} else {
-		CHANNELS_LoadChannel(gSettings.CurrentVfo ? 999 : 1000, !gSettings.CurrentVfo);
 		CHANNELS_LoadChannel(gSettings.CurrentVfo ? 1000 : 999, gSettings.CurrentVfo);
 	}
 
@@ -314,7 +318,7 @@ static void DETECTOR_Loop(void)
 					if (KEY_CurrentKey == KEY_MENU) {
 						KEY_CurrentKey = KEY_NONE;
 						RADIO_EndRX();
-						gSettings.WorkMode = 0;
+						WORKMODE_SET(gSettings.CurrentVfo, 0);
 						SETTINGS_SaveGlobals();
 						RADIO_SaveCurrentVfo();
 						KEY_SideKeyLongPressed = false;

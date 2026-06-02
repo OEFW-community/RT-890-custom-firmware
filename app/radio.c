@@ -244,11 +244,8 @@ void RADIO_Init(void)
 
 	CHANNELS_CheckFreeChannels();
 
-	if (gSettings.WorkMode) {
-		CHANNELS_LoadWorkMode();
-	} else {
-		CHANNELS_LoadVfoMode();
-	}
+	// Loads each VFO according to its own (per-VFO) mode.
+	CHANNELS_LoadWorkMode();
 
 	gCurrentVfo = gSettings.CurrentVfo;
 
@@ -282,7 +279,7 @@ void RADIO_Tune(uint8_t Vfo)
 void RADIO_StartRX(void)
 {
 	if (gScannerMode) {
-		gScanLastRxFreqOrChannel = gSettings.WorkMode ? gSettings.VfoChNo[gSettings.CurrentVfo]
+		gScanLastRxFreqOrChannel = WORKMODE(gSettings.CurrentVfo) ? gSettings.VfoChNo[gSettings.CurrentVfo]
 													  : gVfoInfo[gSettings.CurrentVfo].Frequency;
 	}
 #ifdef ENABLE_FM_RADIO
@@ -438,7 +435,7 @@ static void PlayRogerBeep(uint8_t Mode)
 
 void RADIO_Retune(void)
 {
-	if (gSettings.WorkMode) {
+	if (WORKMODE(gSettings.CurrentVfo)) {
 		CHANNELS_LoadChannel(gSettings.VfoChNo[gSettings.CurrentVfo], gSettings.CurrentVfo);
 	} else {
 		CHANNELS_LoadChannel(gSettings.CurrentVfo ? 1000 : 999, gSettings.CurrentVfo);
@@ -491,7 +488,7 @@ void VFO_ClearMute(void)
 
 void RADIO_SaveCurrentVfo(void)
 {
-	if (gSettings.WorkMode) {
+	if (WORKMODE(gSettings.CurrentVfo)) {
 		CHANNELS_SaveChannel(gSettings.VfoChNo[gSettings.CurrentVfo], &gVfoState[gSettings.CurrentVfo]);
 	} else {
 		CHANNELS_SaveChannel(gSettings.CurrentVfo ? 1000 : 999, &gVfoState[gSettings.CurrentVfo]);

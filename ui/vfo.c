@@ -38,7 +38,7 @@ void UI_DrawVfo(uint8_t Vfo)
 	UI_DrawName(Vfo, gVfoState[Vfo].Name);
 	gColorForeground = COLOR_FOREGROUND;
 #ifdef ENABLE_SCANLIST_DISPLAY
-	if (gSettings.WorkMode && gRadioMode == RADIO_MODE_QUIET
+	if (WORKMODE(Vfo) && gRadioMode == RADIO_MODE_QUIET
 #ifdef ENABLE_KEEP_MONITOR_MODE_UP_DN
 		&& !gMonitorMode
 #endif
@@ -86,7 +86,7 @@ void UI_DrawVfo(uint8_t Vfo)
 
 	UI_DrawTxPower(gVfoState[Vfo].bIsLowPower, Vfo);
 	gColorForeground = COLOR_FOREGROUND;
-	if (gSettings.WorkMode) {
+	if (WORKMODE(Vfo)) {
 		UI_DrawChannel(gSettings.VfoChNo[Vfo], Vfo);
 	} else {
 		UI_DrawChannel(Vfo ? 1000 : 999, Vfo);

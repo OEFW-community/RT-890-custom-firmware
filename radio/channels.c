@@ -622,10 +622,64 @@ void CHANNELS_CheckFreeChannels(void)
 		}
 	}
 	if (gFreeChannelsCount == 0) {
-		gSettings.WorkMode = 0;
+		// No memory channels exist: force both VFOs to frequency mode.
+		WORKMODE_SET(0, 0);
+		WORKMODE_SET(1, 0);
 		SETTINGS_SaveGlobals();
 		CHANNELS_LoadVfoMode();
 	}
+}
+
+// Clear the row where the scan lists of a VFO in memory mode are drawn, so
+// that nothing of the RX/TX bar frame is left under them.
+static void ClearScanListArea(uint8_t Vfo)
+{
+#ifdef ENABLE_SCANLIST_DISPLAY
+#if defined(ENABLE_RX_BAR) || defined(ENABLE_TX_BAR)
+	if (Vfo == gSettings.CurrentVfo || gSettings.DualDisplay) {
+		DISPLAY_Fill(20, 127, 43 - (Vfo * 41), 49 - (Vfo * 41), COLOR_BACKGROUND);
+	}
+#endif
+#endif
+}
+
+// Voice prompt for the mode of the current VFO: channel number in memory
+// mode, "frequency mode" sample otherwise.
+void CHANNELS_PlayModePrompt(void)
+{
+	if (gScreenMode == SCREEN_MAIN && gSettings.DtmfState != DTMF_STATE_KILLED) {
+		if (WORKMODE(gSettings.CurrentVfo)) {
+			AUDIO_PlayChannelNumber();
+		} else {
+			AUDIO_PlaySampleOptional(0);
+		}
+	}
+}
+
+// Load a single VFO from its saved memory channel (memory mode).
+void CHANNELS_LoadWorkModeVfo(uint8_t Vfo)
+{
+	ClearScanListArea(Vfo);
+	if (CHANNELS_LoadChannel(gSettings.VfoChNo[Vfo], Vfo)) {
+		gSettings.VfoChNo[Vfo] = CHANNELS_GetChannelUp(gSettings.VfoChNo[Vfo], Vfo);
+		SETTINGS_SaveGlobals();
+	}
+}
+
+// Load a single VFO from its frequency-mode slot (999 for VFO 0, 1000 for VFO 1).
+void CHANNELS_LoadVfoModeVfo(uint8_t Vfo)
+{
+	ChannelInfo_t VfoState;
+	uint16_t Channel = Vfo ? 1000 : 999;
+	uint32_t Address = Vfo ? 0x3C9D00 : 0x3C9CE0;
+
+	memcpy(&VfoState, &VfoTemplate[Vfo], sizeof(VfoState));
+
+	while (CHANNELS_LoadChannel(Channel, Vfo)) {
+		SFLASH_Update(&VfoState, Address, sizeof(VfoState));
+	}
+
+	CHANNELS_LoadChannel(Channel, Vfo);
 }
 
 void CHANNELS_LoadVfoMode(void)
@@ -654,27 +708,15 @@ void CHANNELS_LoadVfoMode(void)
 
 void CHANNELS_LoadWorkMode(void)
 {
-#ifdef ENABLE_SCANLIST_DISPLAY
-#if defined(ENABLE_RX_BAR) || defined(ENABLE_TX_BAR)
-
-	DISPLAY_Fill(20, 127, 43 - (gSettings.CurrentVfo * 41), 49 - (gSettings.CurrentVfo * 41), COLOR_BACKGROUND);
-	if (gSettings.DualDisplay) {
-		DISPLAY_Fill(20, 127, 43 - ((1 - gSettings.CurrentVfo) * 41), 49 - ((1 - gSettings.CurrentVfo) * 41), COLOR_BACKGROUND);
+	// Load each VFO according to its own mode (memory or frequency).
+	for (uint8_t Vfo = 0; Vfo < 2; Vfo++) {
+		if (WORKMODE(Vfo)) {
+			CHANNELS_LoadWorkModeVfo(Vfo);
+		} else {
+			CHANNELS_LoadVfoModeVfo(Vfo);
+		}
 	}
-#endif
-#endif
-	if (CHANNELS_LoadChannel(gSettings.VfoChNo[0], 0)) {
-		gSettings.VfoChNo[0] = CHANNELS_GetChannelUp(gSettings.VfoChNo[0], 0);
-		SETTINGS_SaveGlobals();
-	}
-	if (CHANNELS_LoadChannel(gSettings.VfoChNo[1], 1)) {
-		gSettings.VfoChNo[1] = CHANNELS_GetChannelUp(gSettings.VfoChNo[1], 1);
-		SETTINGS_SaveGlobals();
-	}
-	CHANNELS_LoadChannel(gSettings.VfoChNo[gSettings.CurrentVfo], gSettings.CurrentVfo);
-	if (gScreenMode == SCREEN_MAIN && gSettings.DtmfState != DTMF_STATE_KILLED) {
-		AUDIO_PlayChannelNumber();
-	}
+	CHANNELS_PlayModePrompt();
 }
 
 uint16_t CHANNELS_GetChannelUp(uint16_t Channel, uint8_t Vfo)
@@ -719,7 +761,7 @@ void CHANNELS_SetNoaaChannel(uint8_t Channel)
 
 void CHANNELS_SaveVfo(void)
 {
-	if (gSettings.WorkMode) {
+	if (WORKMODE(gSettings.CurrentVfo)) {
 		CHANNELS_SaveChannel(gSettings.VfoChNo[gSettings.CurrentVfo], &gVfoState[gSettings.CurrentVfo]);
 	} else {
 		CHANNELS_SaveChannel(gSettings.CurrentVfo ? 1000 : 999, &gVfoState[gSettings.CurrentVfo]);
