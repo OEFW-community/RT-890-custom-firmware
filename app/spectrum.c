@@ -362,13 +362,13 @@ uint16_t GetAdjustedLevel(uint16_t Level, uint16_t Low, uint16_t High, uint16_t 
 }
 
 void JumpToVFO(void) {
-	if (gSettings.WorkMode) {
-		gSettings.WorkMode = FALSE;
-		CHANNELS_LoadVfoMode();
+	if (WORKMODE(gSettings.CurrentVfo)) {
+		WORKMODE_SET(gSettings.CurrentVfo, FALSE);
+		CHANNELS_LoadVfoModeVfo(gSettings.CurrentVfo);
 	}
 
 #ifdef UART_DEBUG
-	Int2Ascii(gSettings.WorkMode, 1);
+	Int2Ascii(WORKMODE(gSettings.CurrentVfo), 1);
 	UART_printf("gSettings.WorkMode: ");
 	UART_printf(gShortString);
 	UART_printf("     -----     ");
@@ -490,11 +490,15 @@ void StopSpectrum(void) {
 	SCREEN_TurnOn();
 	ST7735S_Init();
 
-	if (gSettings.WorkMode) {
+	// Restore each VFO in its own mode.
+	if (WORKMODE(!gSettings.CurrentVfo)) {
 		CHANNELS_LoadChannel(gSettings.VfoChNo[!gSettings.CurrentVfo], !gSettings.CurrentVfo);
+	} else {
+		CHANNELS_LoadChannel((!gSettings.CurrentVfo) ? 1000 : 999, !gSettings.CurrentVfo);
+	}
+	if (WORKMODE(gSettings.CurrentVfo)) {
 		CHANNELS_LoadChannel(gSettings.VfoChNo[gSettings.CurrentVfo], gSettings.CurrentVfo);
 	} else {
-		CHANNELS_LoadChannel(gSettings.CurrentVfo ? 999 : 1000, !gSettings.CurrentVfo);
 		CHANNELS_LoadChannel(gSettings.CurrentVfo ? 1000 : 999, gSettings.CurrentVfo);
 	}
 

@@ -75,7 +75,7 @@ void Task_CheckPTT(void)
 									gPttPressed = true;
 								}
 							} else {
-								if (gSettings.WorkMode) {
+								if (WORKMODE(gSettings.CurrentVfo)) {
 									RADIO_DrawWorkMode();
 								} else {
 									RADIO_DrawFrequencyMode();

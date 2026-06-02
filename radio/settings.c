@@ -156,7 +156,7 @@ void SETTINGS_SaveState(void)
 	gScannerMode = false;
 	gpio_bits_reset(GPIOA, BOARD_GPIOA_LED_GREEN);
 	SCANNER_Countdown = 0;
-	if (gSettings.WorkMode) {
+	if (WORKMODE(gSettings.CurrentVfo)) {
 		SETTINGS_SaveGlobals();
 	} else {
 		CHANNELS_SaveChannel(gSettings.CurrentVfo ? 1000 : 999, &gVfoState[gSettings.CurrentVfo]);
