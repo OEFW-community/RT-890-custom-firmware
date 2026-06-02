@@ -109,7 +109,7 @@ static void MAIN_KeyHandler(KEY_t Key)
 				FM_AppendDigit(Key);
 			} else
 #endif
-			if (gSettings.WorkMode && !gFrequencyReverse) {
+			if (WORKMODE(gSettings.CurrentVfo) && !gFrequencyReverse) {
 				CHANNEL_AppendDigit(Key);
 			} else {
 				VFO_AppendDigit(Key);
@@ -124,7 +124,7 @@ static void MAIN_KeyHandler(KEY_t Key)
 	case KEY_MENU:
 		if (gScannerMode) {
 			// stop scanner and restore last RX channel or frequency
-			if (gSettings.WorkMode) {
+			if (WORKMODE(gSettings.CurrentVfo)) {
 				CHANNELS_LoadChannel(gScanLastRxFreqOrChannel, gSettings.CurrentVfo);
 				gSettings.VfoChNo[gSettings.CurrentVfo] = gScanLastRxFreqOrChannel;
 			} else {
@@ -152,7 +152,7 @@ static void MAIN_KeyHandler(KEY_t Key)
 				UI_DrawFMFrequency(gSettings.FmFrequency);
 			} else
 #endif
-			if (gSettings.WorkMode && !gFrequencyReverse) {
+			if (WORKMODE(gSettings.CurrentVfo) && !gFrequencyReverse) {
 				CHANNELS_UpdateChannel();
 			} else {
 				CHANNELS_UpdateVFO();
@@ -172,7 +172,7 @@ static void MAIN_KeyHandler(KEY_t Key)
 #ifndef ENABLE_KEEP_MONITOR_MODE_UP_DN
 						RADIO_CancelMode();
 #endif
-						if (gSettings.WorkMode) {
+						if (WORKMODE(gSettings.CurrentVfo)) {
 							CHANNELS_NextChannelMr(Key, false);
 							SETTINGS_SaveGlobals();
 							AUDIO_PlayChannelNumber();
@@ -212,7 +212,7 @@ static void MAIN_KeyHandler(KEY_t Key)
 	case KEY_EXIT:
 		if (gScannerMode) {
 			// stop scanner and restore initial channel or frequency
-			if (gSettings.WorkMode) {
+			if (WORKMODE(gSettings.CurrentVfo)) {
 				CHANNELS_LoadChannel(gScanStartFreqOrChannel, gSettings.CurrentVfo);
 				gSettings.VfoChNo[gSettings.CurrentVfo] = gScanStartFreqOrChannel;
 			} else {
@@ -230,7 +230,7 @@ static void MAIN_KeyHandler(KEY_t Key)
 				RADIO_DrawFmMode();
 			} else
 #endif
-			if (gSettings.WorkMode) {
+			if (WORKMODE(gSettings.CurrentVfo)) {
 				RADIO_DrawWorkMode();
 			} else {
 				RADIO_DrawFrequencyMode();
@@ -286,12 +286,13 @@ static void MAIN_KeyHandler(KEY_t Key)
 			}
 			gInputBoxWriteIndex = 0;
 			gAudioOffsetIndex = gAudioOffsetLast;
-			gSettings.WorkMode ^= 1;
+			// Toggle and reload only the current VFO; the other VFO keeps its mode.
+			WORKMODE_TOGGLE(gSettings.CurrentVfo);
 			SETTINGS_SaveGlobals();
-			if (gSettings.WorkMode) {
-				CHANNELS_LoadWorkMode();
+			if (WORKMODE(gSettings.CurrentVfo)) {
+				CHANNELS_LoadWorkModeVfo(gSettings.CurrentVfo);
 			} else {
-				CHANNELS_LoadVfoMode();
+				CHANNELS_LoadVfoModeVfo(gSettings.CurrentVfo);
 			}
 			RADIO_Tune(gSettings.CurrentVfo);
 			if (gSettings.DualDisplay == 0) {
@@ -374,7 +375,7 @@ static void HandlerLong(KEY_t Key)
 					if (gFM_Mode == FM_MODE_OFF) {
 #endif
 						RADIO_CancelMode();
-						if (gSettings.WorkMode) {
+						if (WORKMODE(gSettings.CurrentVfo)) {
 							do {
 								CHANNELS_NextChannelMr(Key, false);
 							} while (KEY_GetButton() != KEY_NONE);

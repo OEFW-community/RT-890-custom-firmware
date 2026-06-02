@@ -821,7 +821,7 @@ void UI_DrawSomething(void)
 #endif
 		UI_DrawVfo(gCurrentVfo);
 		if (gSettings.CurrentVfo == gCurrentVfo && gInputBoxWriteIndex) {
-			if (gSettings.WorkMode) {
+			if (WORKMODE(gSettings.CurrentVfo)) {
 				UI_DrawDigits(gInputBox, gSettings.CurrentVfo);
 			} else {
 				UI_DrawFrequencyEx(gInputBox, gSettings.CurrentVfo, gFrequencyReverse);
@@ -1072,7 +1072,7 @@ void UI_DrawScan(void)
 	if (!gScannerMode) {
 		UI_DrawSmallString(18, 86, " ", 1);
 	} else {
-		if (gSettings.WorkMode) {
+		if (WORKMODE(gSettings.CurrentVfo)) {
 			UI_DrawSmallString(18, 86, gExtendedSettings.ScanAll ? "A" :
 									   gExtendedSettings.CurrentScanList == 0 ? "1" :
 									   gExtendedSettings.CurrentScanList == 1 ? "2" :

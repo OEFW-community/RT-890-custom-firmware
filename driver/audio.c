@@ -62,7 +62,7 @@ static uint32_t GetDigitAddress(uint8_t Digit)
 
 static void PlayNumber(uint16_t Channel)
 {
-	if (gSettings.VoicePrompt && gSettings.WorkMode) {
+	if (gSettings.VoicePrompt && WORKMODE(gSettings.CurrentVfo)) {
 		Channel++;
 		if (Channel <= 20) {
 			SFLASH_Offsets[0] = GetDigitAddress(Channel);

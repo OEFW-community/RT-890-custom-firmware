@@ -75,8 +75,9 @@ typedef struct __attribute__((packed)) {
 	uint16_t FmFrequency;
 	// 0x0B
 	uint8_t Unknown1:1;
-	uint8_t WorkMode:1;
-	uint8_t Unknown2:2;
+	uint8_t WorkMode:1;		// VFO-0 mode: 0 = frequency, 1 = memory
+	uint8_t WorkModeB:1;	// VFO-1 mode: 0 = frequency, 1 = memory
+	uint8_t Unknown2:1;
 	uint8_t ScanDirection:1;
 	uint8_t StandbyArea:1;
 	uint8_t DualStandby:1;
@@ -189,6 +190,12 @@ extern gSettings_t gSettings;
 extern char WelcomeString[32];
 extern uint32_t gFrequencyStep;
 extern gExtendedSettings_t gExtendedSettings;
+
+// Per-VFO work mode accessors. Mode is independent for each VFO:
+// VFO 0 -> gSettings.WorkMode, VFO 1 -> gSettings.WorkModeB.
+#define WORKMODE(vfo)            ((vfo) == 0 ? gSettings.WorkMode : gSettings.WorkModeB)
+#define WORKMODE_SET(vfo, mode)  do { if ((vfo) == 0) gSettings.WorkMode = (mode); else gSettings.WorkModeB = (mode); } while (0)
+#define WORKMODE_TOGGLE(vfo)     do { if ((vfo) == 0) gSettings.WorkMode ^= 1; else gSettings.WorkModeB ^= 1; } while (0)
 
 void SETTINGS_BackupCalibration(void);
 void SETTINGS_LoadCalibration(void);

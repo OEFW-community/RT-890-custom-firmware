@@ -68,6 +68,8 @@ bool CHANNELS_LoadChannel(uint16_t ChNo, uint8_t Vfo);
 void CHANNELS_CheckFreeChannels(void);
 void CHANNELS_LoadVfoMode(void);
 void CHANNELS_LoadWorkMode(void);
+void CHANNELS_LoadWorkModeVfo(uint8_t Vfo);
+void CHANNELS_LoadVfoModeVfo(uint8_t Vfo);
 uint16_t CHANNELS_GetChannelUp(uint16_t Channel, uint8_t Vfo);
 uint16_t CHANNELS_GetChannelDown(uint16_t Channel, uint8_t Vfo);
 void CHANNELS_SaveChannel(uint16_t Channel, const ChannelInfo_t *pChannel);

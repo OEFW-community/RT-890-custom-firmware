@@ -635,7 +635,7 @@ void MENU_AcceptSetting(void)
 		CHANNELS_SaveChannel((gSettingCurrentValue + gSettingIndex) % gSettingMaxValues, &gVfoState[gSettings.CurrentVfo]);
 		CHANNELS_CheckFreeChannels();
 		// TODO: This "if" block doesn't exist in the original, but there's a bug where VFO A is cleared by the previous line
-		if (gSettings.WorkMode) {
+		if (WORKMODE(0)) {
 			CHANNELS_LoadChannel(gSettings.VfoChNo[0], 0);
 		} else {
 			CHANNELS_LoadChannel(999, 0);
@@ -647,16 +647,16 @@ void MENU_AcceptSetting(void)
 		Channel = (gSettingCurrentValue + gSettingIndex) % gSettingMaxValues;
 		CHANNELS_SaveChannel(Channel, &EmptyChannel);
 		CHANNELS_CheckFreeChannels();
-		if (gSettings.WorkMode) {
-			if (gSettings.VfoChNo[0] == Channel) {
+		if (WORKMODE(0) || WORKMODE(1)) {
+			if (WORKMODE(0) && gSettings.VfoChNo[0] == Channel) {
 				gSettings.VfoChNo[0] = CHANNELS_GetChannelUp(Channel, 0);
 			}
-			if (gSettings.VfoChNo[1] == Channel) {
+			if (WORKMODE(1) && gSettings.VfoChNo[1] == Channel) {
 				gSettings.VfoChNo[1] = CHANNELS_GetChannelUp(Channel, 1);
 			}
 			SETTINGS_SaveGlobals();
 		}
-		if (gSettings.WorkMode) {
+		if (WORKMODE(!gSettings.CurrentVfo)) {
 			CHANNELS_LoadChannel(gSettings.VfoChNo[!gSettings.CurrentVfo], !gSettings.CurrentVfo);
 		} else {
 			CHANNELS_LoadChannel(gSettings.CurrentVfo ? 999 : 1000, !gSettings.CurrentVfo);

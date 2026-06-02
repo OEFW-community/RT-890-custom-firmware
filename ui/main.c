@@ -67,7 +67,7 @@ void UI_DrawMain(bool bSkipStatus)
 	}
 
 	if (gInputBoxWriteIndex != 0) {
-		if (gSettings.WorkMode) {
+		if (WORKMODE(gSettings.CurrentVfo)) {
 			UI_DrawDigits(gInputBox, gSettings.CurrentVfo);
 		} else {
 			UI_DrawFrequencyEx(gInputBox, gSettings.CurrentVfo, gFrequencyReverse);

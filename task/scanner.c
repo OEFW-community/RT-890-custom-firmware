@@ -42,7 +42,7 @@ void Task_Scanner(void) {
 		if (gRadioMode == RADIO_MODE_RX) {	// Scanner timeout
 			RADIO_EndRX();
 		}
-		if (gSettings.WorkMode) {
+		if (WORKMODE(gSettings.CurrentVfo)) {
 			if(!CHANNELS_NextChannelMr(gManualScanDirection ? KEY_DOWN : KEY_UP, !gExtendedSettings.ScanAll)) {
 				Next_ScanList();
 			}
