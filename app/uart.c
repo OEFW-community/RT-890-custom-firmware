@@ -160,8 +160,14 @@ static void FlashCmd(uint8_t Command, uint8_t Hi, uint8_t Lo)
 		SlotCmd(Command, Hi, Lo);
 		return;
 	}
+	// Voice prompt upload (0x40) would erase the whole former voice prompt
+	// area, i.e. the firmware slots, the active state and the config banks.
+	// Refused before anything is stopped or erased.
+	if (Command == 0x40) {
+		UART_SendByte(0xFF);
+		return;
+	}
 #endif
-
 	TMR1->ctrl1_bit.tmren = FALSE;
 	// Why? Is this some left over from another radio?
 	USART2->ctrl1_bit.uen = FALSE;
