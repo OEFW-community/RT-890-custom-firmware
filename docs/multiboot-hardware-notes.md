@@ -1,6 +1,6 @@
 # Multiboot: hardware notes (milestone M0)
 
-Findings gathered with the M0 diagnostic build (`ENABLE_MULTIBOOT=1 ENABLE_MB_DIAG=1`) on one radio,
+Findings gathered with the M0 diagnostic build (since replaced by the boot selector) on one radio,
 and from a disassembly of the factory bootloader read back with UART command 0x54.
 The bootloader binary itself is Radtel code and is not part of this repository.
 

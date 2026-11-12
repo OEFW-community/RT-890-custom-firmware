@@ -46,7 +46,8 @@ void SFLASH_Read(void*b,uint32_t a,uint16_t n){SFLASH_ReadRaw(b,tr(a),n);}
 void SFLASH_Erase(uint32_t p){uint32_t a=tr(p<<12); CHECK0(!(a&0xFFF)); memset(spi+a,0xFF,4096);writes++;}
 void SFLASH_Write(const void*b,uint32_t a,uint16_t n){const uint8_t*s=b;a=tr(a);CHECK0(a+n<=sizeof spi);for(int i=0;i<n;i++)spi[a+i]&=s[i];writes++;}
 static uint8_t *iflash=(uint8_t*)MB_INT_APP_BASE;
-static int restored=-1; static uint32_t rsize;
+static int restored=-1; static int resets;
+void NVIC_SystemReset(void){ resets++; longjmp(jb,1); } static uint32_t rsize;
 void MB_RamRestore(uint32_t a, uint32_t size, uint32_t *buf){ restored=a; rsize=size; CHECK0(buf==(uint32_t*)(gFlashBuffer+0x1000)); memset(iflash,0xFF,MB_INT_APP_SIZE); memcpy(iflash,spi+a,size); longjmp(jb,1); }
 #define CHECK(c) do{ if(!(c)){printf("FAIL line %d: %s\n",__LINE__,#c);exit(1);} }while(0)
 static void fillimg(uint8_t *p,int seed){ srand(seed); for(int i=0;i<MB_INT_APP_SIZE;i++)p[i]=rand(); uint32_t v[2]={0x20003FF0,0x08001500|1}; memcpy(p,v,8);}
@@ -71,14 +72,15 @@ int main(void){
  // 3. restore slot 1 (smaller image)
  writeslot(1,7,0xE000); CHECK(MB_ValidateSlot(1,&h,NULL)==MB_OK);
 
- #define RESTORE(n) (setjmp(jb)==0 ? MB_RestoreSlot(n) : 100)
+ #define RESTORE(n) (setjmp(jb)==0 ? MB_RestoreSlot(n,n) : 100)
+ #define SWITCH(n) (setjmp(jb)==0 ? MB_SwitchBank(n) : 100)
  restored=-1; CHECK(RESTORE(1)==100 && restored==0x11000 && rsize==0xE000);
  CHECK(MB_ReadState(&st)==MB_STATE_VALID && st.Generation==3 && st.Slot==1 && st.Bank==1 && st.ImageSize==0xE000);
  writes=0; MB_BootCheck(); CHECK(writes==0); // restored firmware recognised
  // 4. refused restores modify nothing
- CHECK(MB_RestoreSlot(2)==MB_ERR_MAGIC); spi[0x11000+100]^=1; CHECK(MB_RestoreSlot(1)==MB_ERR_CRC); spi[0x11000+100]^=1;
+ CHECK(MB_RestoreSlot(2,2)==MB_ERR_MAGIC); spi[0x11000+100]^=1; CHECK(MB_RestoreSlot(1,1)==MB_ERR_CRC); spi[0x11000+100]^=1;
  CHECK(MB_ReadState(&st)==MB_STATE_VALID && st.Generation==3);
- gCalibration.BatteryCalibration[2]=250; CHECK(MB_RestoreSlot(1)==MB_ERR_BATTERY); gCalibration.BatteryCalibration[2]=0;
+ gCalibration.BatteryCalibration[2]=250; CHECK(MB_RestoreSlot(1,1)==MB_ERR_BATTERY); gCalibration.BatteryCalibration[2]=0;
  // 5. power loss while writing a new record: sector erased, nothing written
  // gen3 is in sector A (gen1 A, gen2 B, gen3 A): the next record goes to B
  memset(spi+MB_STATE_B,0xFF,4096); CHECK(MB_ReadState(&st)==MB_STATE_VALID && st.Generation==3);
@@ -128,6 +130,18 @@ int main(void){
    restored=-1; CHECK(RESTORE(0)==100); MB_BootCheck(); CHECK(MB_ActiveBank()==0 && !memcmp(spi+SFLASH_BANK_START,cfg,sizeof cfg));
    // a bank whose marker is lost is never used
    restored=-1; CHECK(RESTORE(1)==100); spi[0x60000+MB_BANK_MARKER]^=1; MB_BootCheck(); CHECK(MB_ActiveBank()==0);
+ }
+ // 11. bank switch without reflash, and slot loaded with another bank
+ { MB_BootCheck(); CHECK(MB_ActiveBank()==0); /* marker of bank 1 lost: bank 0 */ MB_ReadState(&st); uint32_t g=st.Generation; uint8_t sl=st.Slot;
+   resets=0; restored=-1; CHECK(SWITCH(3)==100 && resets==1 && restored==-1);       // bank 3 created, no reflash
+   CHECK(MB_ReadState(&st)==MB_STATE_VALID && st.Slot==sl && st.Bank==3 && st.Generation==g+1);
+   CHECK(!memcmp(spi+0xA0000,spi+SFLASH_BANK_START,SFLASH_BANK_SIZE));
+   MB_BootCheck(); CHECK(MB_ActiveBank()==3);
+   CHECK(MB_SwitchBank(5)==MB_ERR_SLOT);
+   restored=-1; CHECK(setjmp(jb)==0 ? MB_RestoreSlot(2,0) : 1); CHECK(restored==0x21000);   // slot 2 with bank 0
+   CHECK(MB_ReadState(&st)==MB_STATE_VALID && st.Slot==2 && st.Bank==0);
+   MB_BootCheck(); CHECK(MB_ActiveBank()==0);
+   spi[MB_STATE_A+8]^=1; spi[MB_STATE_B+8]^=1; CHECK(MB_SwitchBank(1)==MB_ERR_STATE);     // needs a valid state
  }
  printf("all host tests passed\n");
  return 0;}
