@@ -9,3 +9,4 @@ external/SDK
 .cache
 compile_commands.json
 tests/mb_host/mb_host_test
+__pycache__/

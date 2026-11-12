@@ -108,10 +108,24 @@ static void FlashCmd(uint8_t Command, uint8_t Hi, uint8_t Lo)
 	uint16_t i;
 
 	Block = (Hi << 8) | Lo;
+#ifdef ENABLE_MULTIBOOT
+	// Nothing touches the SPI flash before the config bank is selected.
+	if (!gSFLASH_BankReady) {
+		UART_SendByte(0xFF);
+		return;
+	}
+#endif
 	if (Command == 0x52) {
 		Buffer[0] = 0x52;
 		Buffer[1] = Hi;
 		Buffer[2] = Lo;
+#ifdef ENABLE_MULTIBOOT
+		// The flash is 4 MB (blocks 0x0000-0x7FFF): bit 15 of the block
+		// number requests a raw read, without config bank translation.
+		if (Block & 0x8000U) {
+			SFLASH_ReadRaw(Buffer + 3, (Block & 0x7FFFU) * 128U, 128);
+		} else
+#endif
 		SFLASH_Read(Buffer + 3, Block * 128, 128);
 		Buffer[131] = CalcSum(Buffer, 0x83);
 		UART_Send(Buffer, 132);

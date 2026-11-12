@@ -80,7 +80,7 @@ A multiboot / multiconfig feature, inspired by the one of Armel F4HWN for the UV
 It reuses the SPI flash area of the voice prompts (0x000000-0x2CFFFF) to store several firmware images and
 configuration banks. Implemented so far: firmware slots with validated headers, restore of a slot into the
 internal flash, active state and automatic backup of the main firmware, host tool to write slots (milestones
-M0 to M3). Not yet: boot selector, configuration banks.
+M0 to M3), one configuration bank per slot (M5). Not yet: boot selector (M4).
 
 ## Build options
 
@@ -104,7 +104,10 @@ make ENABLE_MULTIBOOT=1 ENABLE_MB_DIAG=1
 | 0x000000-0x00FFFF | Slot 0 "Main": copy of the firmware flashed with the usual flasher, written by the radio only |
 | 0x010000-0x04FFFF | Slots 1 to 4, written by the host |
 | 0x050000 / 0x051000 | Active state, two alternating 4 KB sectors |
-| 0x052000-0x2CFFFF | Reserved (configuration banks, future use) |
+| 0x052000-0x05FFFF | Free |
+| 0x060000 / 0x080000 / 0x0A0000 / 0x0C0000 | Configuration banks 1 to 4 (128 KB each) |
+| 0x0E0000-0x2CFFFF | Reserved for future use |
+| 0x3C1000-0x3D5FFF | Configuration bank 0 (historical location, unchanged) |
 
 Each slot is 64 KB: a 4 KB header sector, then the image (at most 60416 bytes) at offset 0x1000.
 The 64 byte header (little endian) is: magic `FMB1` (u32 0x31424D46), header version (u16, 1), flags (u16, bit 0 =
@@ -121,21 +124,43 @@ does not hold the newest valid one, so a power loss always leaves a valid record
 At every boot, before the settings are loaded, the CRC of the running firmware is compared with the active state:
 
 * match: normal boot, nothing is written;
-* no state at all (first multiboot boot: the state sectors are erased or still hold voice prompt data) or mismatch (firmware flashed with the usual flasher): the running
-  firmware becomes **Main**. It is copied to slot 0, verified, and recorded as active (slot 0, bank 0). The red
+* no state at all (first multiboot boot: the state sectors are erased or still hold voice prompt data) or
+  mismatch (firmware flashed with the usual flasher): the running firmware becomes **Main**. It is copied to slot 0, verified, and recorded as active (slot 0, bank 0). The red
   LED is lit during this copy (a few seconds, once);
 * corrupt state: nothing is written, Main is never overwritten.
 
 Restoring a slot records it as active (with configuration bank = slot) right before the internal flash is erased,
 so the restored firmware is recognised at the next boot.
 
-The state logic is tested on a PC with a simulated SPI flash: `make -C tests/mb_host` (native gcc and zlib).
+## Configuration banks
+
+Each slot has its own configuration: settings, channels, VFOs, DTMF, factory reset template and extended
+settings, i.e. the whole range 0x3C1000-0x3D5FFF. Calibration, fonts and logo are shared. Bank 0 is the
+historical location, so nothing changes for existing users; banks 1 to 4 are 128 KB areas in the former voice
+prompt area.
+
+The translation is done in a single place, the SPI flash driver: every access to 0x3C1000-0x3D5FFF goes to the
+active bank. The CPS therefore reads and writes the configuration of the running slot, without any change.
+A factory reset only affects the active bank.
+
+* Restoring slot N activates bank N. The first time, bank N is initialised by copying the active bank into it
+  (a few seconds), then a marker is written in its last sector. Afterwards it is kept as is.
+* At boot, the bank recorded in the active state is used; bank 0 if there is no valid state or if that bank has
+  no marker.
+* A firmware without multiboot support always uses bank 0.
+* UART flash commands are refused until the bank is selected at boot. Bit 15 of the 0x52 block number requests
+  a raw read without translation (the flash is 4 MB, blocks 0x0000-0x7FFF); `mb_tool.py dump-spi` uses it by
+  default, so a backup is a faithful physical image whatever the active bank.
+
+The state and bank logic is tested on a PC with a simulated SPI flash: `make -C tests/mb_host` (native gcc and
+zlib).
 
 ## Test screen (`ENABLE_MB_DIAG`)
 
 Hold **MENU** while powering on. Each line shows a slot: number, name and CRC of its header, or `-N` with the
 header error code. The bottom line shows the CRC-32 of the running firmware (`INT`), which is also the CRC-32 of
-its 60416 byte `firmware.bin`, and the active slot recorded in the state (`A:n`, `A:-` no state, `A:?` corrupt).
+its 60416 byte `firmware.bin`, the active slot recorded in the state (`An`, `A-` no state, `A?` corrupt) and the
+active configuration bank (`Bn`).
 
 * **0** to **4**, then **MENU** to confirm: restore that slot into the internal flash.
 * **EXIT**: continue booting.
@@ -143,7 +168,7 @@ its 60416 byte `firmware.bin`, and the active slot recorded in the state (`A:n`,
 Before anything is erased, the slot is fully validated (header, image CRC, vector table, the same checks as the
 factory bootloader) and the battery level checked. Otherwise `Refused, error N` is shown and nothing is
 modified. Error codes: 1 slot number, 2 no header, 3 header version, 4 not committed, 5 image size, 6 image CRC,
-7 vector table, 8 battery, 9 RAM code load, 10 read back, 11 active state write.
+7 vector table, 8 battery, 9 RAM code load, 10 read back, 11 active state write, 12 configuration bank copy.
 
 The restore routine runs from RAM with interrupts disabled. For each of the 59 sectors of 1 KB it reads the SPI
 flash, erases the sector, programs it word by word and reads it back, with up to 3 attempts; bytes past the
@@ -170,7 +195,7 @@ python3 tools/mb_tool.py -p /dev/ttyUSB0 validate 1
 ```
 
 * `dump-spi` reads the SPI flash (whole 4 MB by default, `--start` / `--size` to change the range; several
-  minutes). **Keep this backup safe**: the SPI flash holds the calibration of your radio, which is unique to it.
+  minutes), raw, without bank translation (`--banked` to read the configuration range as the CPS sees it). **Keep this backup safe**: the SPI flash holds the calibration of your radio, which is unique to it.
 * `dump-int` reads the 64 KB internal flash (factory bootloader and application).
 * `write-slot` only accepts slots 1 to 4 and images that look like an RT-890 application (vector table).
 
@@ -178,6 +203,7 @@ UART commands added by `ENABLE_MULTIBOOT` (same framing and checksum as the exis
 
 | Command | Frame | Answer |
 |---|---|---|
+| 0x52 | `52 Hi Lo Sum` | existing command; bit 15 of Hi:Lo set = raw read, without bank translation |
 | 0x54 | `54 Hi Lo Sum` | internal flash block Hi:Lo (128 bytes from 0x08000000), like 0x52 |
 | 0x61 | `61 Slot 00 Sum` | erase slot 1-4, `06` or `FF` |
 | 0x62 | `62 Hi Lo Data[128] Sum` | program 128 bytes at SPI address Hi:Lo × 128, slots 1-4 only, `06` or `FF` |

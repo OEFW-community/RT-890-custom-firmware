@@ -243,17 +243,20 @@ def write_slot(radio, slot, image, name, fw_version):
     print("slot %d: %s written and validated, %d bytes, CRC %08X" % (slot, name, len(image), crc))
 
 
-def dump(radio, command, start, size, out_path):
+RAW_FLAG = 0x8000  # 0x52 block number bit 15: raw read, no config bank translation
+
+
+def dump(radio, command, start, size, out_path, raw=False):
     if start % BLOCK_SIZE or size % BLOCK_SIZE:
         raise ValueError("start and size must be multiples of %d" % BLOCK_SIZE)
     first = start // BLOCK_SIZE
     count = size // BLOCK_SIZE
-    if first + count > 0x10000:
-        raise ValueError("range exceeds the 16-bit block address space")
+    if first + count > (RAW_FLAG if raw else 0x10000):
+        raise ValueError("range exceeds the block address space")
     began = time.time()
     with open(out_path, "wb") as out:
         for i in range(count):
-            out.write(radio.read_block(command, first + i))
+            out.write(radio.read_block(command, (first + i) | (RAW_FLAG if raw else 0)))
             if i % 64 == 0 or i == count - 1:
                 done = (i + 1) * BLOCK_SIZE
                 rate = done / max(time.time() - began, 1e-3)
@@ -272,6 +275,9 @@ def main():
     p.add_argument("output")
     p.add_argument("--start", default="0", help="start address (default 0)")
     p.add_argument("--size", default="4M", help="number of bytes (default 4M)")
+    p.add_argument("--banked", action="store_true",
+                   help="read the config range through the active config bank, as the CPS sees it "
+                        "(default: raw physical dump)")
 
     p = sub.add_parser("dump-int", help="back up the internal MCU flash, 64 KB (read-only)")
     p.add_argument("output")
@@ -292,7 +298,7 @@ def main():
     radio = Radio(args.port, args.baudrate)
     try:
         if args.command == "dump-spi":
-            dump(radio, CMD_READ_SPI, parse_size(args.start), parse_size(args.size), args.output)
+            dump(radio, CMD_READ_SPI, parse_size(args.start), parse_size(args.size), args.output, raw=not args.banked)
             print("saved %s" % args.output)
         elif args.command == "dump-int":
             dump(radio, CMD_READ_INT, 0, INT_FLASH_SIZE, args.output)

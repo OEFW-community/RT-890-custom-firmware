@@ -104,19 +104,22 @@ static void DrawSlots(void)
 	ToHex(gString + 4, MB_InternalCrc32(MB_INT_APP_SIZE));
 	gString[12] = ' ';
 	gString[13] = 'A';
-	gString[14] = ':';
 	switch (MB_ReadState(&State)) {
 	case MB_STATE_VALID:
-		gString[15] = '0' + State.Slot;
+		gString[14] = '0' + State.Slot;
 		break;
 	case MB_STATE_MISSING:
-		gString[15] = '-';
+		gString[14] = '-';
 		break;
 	default:
-		gString[15] = '?';
+		gString[14] = '?';
 		break;
 	}
-	UI_DrawString(0, 16, gString, 16);
+	// Active config bank.
+	gString[15] = ' ';
+	gString[16] = 'B';
+	gString[17] = '0' + MB_ActiveBank();
+	UI_DrawString(0, 16, gString, 18);
 }
 
 static void RestoreSlot(uint8_t Slot)
@@ -146,7 +149,7 @@ static void RestoreSlot(uint8_t Slot)
 	}
 
 	ClearScreen();
-	UI_DrawString(0, 80, "Checking...", 11);
+	UI_DrawString(0, 80, "Please wait...", 14);
 	UI_DrawString(0, 64, "Do not power off", 16);
 	// Only returns if the slot was refused: nothing has been modified.
 	DrawMessage("Refused, error", MB_RestoreSlot(Slot));

@@ -26,8 +26,10 @@
 #include <zlib.h>
 #include <setjmp.h>
 static jmp_buf jb;
+#define CHECK0(c) do{ if(!(c)){printf("FAIL %s\n",#c);exit(1);} }while(0)
 #include "at32f421.h"
 #include "radio/settings.h"
+#include "driver/serial-flash.h"
 #include "driver/mb_flash.h"
 gpio_type GPIOA_s; void gpio_bits_set(gpio_type *g, uint16_t p){} void gpio_bits_reset(gpio_type *g, uint16_t p){}
 uint8_t gBatteryVoltage; uint8_t BATTERY_GetVoltage(void){return 200;}
@@ -35,11 +37,15 @@ Calibration_t gCalibration; uint8_t gFlashBuffer[8192];
 const uint8_t __mb_ramfunc_load_start[16]={1,2,3}; uint8_t __mb_ramfunc_start[16];
 void HARDWARE_EnableInterrupts(bool b){}
 static uint8_t spi[0x400000]; static int writes;
-void SFLASH_Read(void*b,uint32_t a,uint16_t n){memcpy(b,spi+a,n);}
-void SFLASH_Erase(uint32_t p){memset(spi+(p<<12),0xFF,4096);writes++;}
-void SFLASH_Write(const void*b,uint32_t a,uint16_t n){const uint8_t*s=b;for(int i=0;i<n;i++)spi[a+i]&=s[i];writes++;}
+// Same bank translation as driver/serial-flash.c.
+static uint32_t bankoff; bool gSFLASH_BankReady;
+static uint32_t tr(uint32_t a){ if(a-SFLASH_BANK_START<SFLASH_BANK_SIZE) a+=bankoff; return a; }
+void SFLASH_SetBankBase(uint32_t base){ bankoff=base-SFLASH_BANK_START; gSFLASH_BankReady=true; }
+void SFLASH_ReadRaw(void*b,uint32_t a,uint16_t n){CHECK0(a+n<=sizeof spi); memcpy(b,spi+a,n);}
+void SFLASH_Read(void*b,uint32_t a,uint16_t n){SFLASH_ReadRaw(b,tr(a),n);}
+void SFLASH_Erase(uint32_t p){uint32_t a=tr(p<<12); CHECK0(!(a&0xFFF)); memset(spi+a,0xFF,4096);writes++;}
+void SFLASH_Write(const void*b,uint32_t a,uint16_t n){const uint8_t*s=b;a=tr(a);CHECK0(a+n<=sizeof spi);for(int i=0;i<n;i++)spi[a+i]&=s[i];writes++;}
 static uint8_t *iflash=(uint8_t*)MB_INT_APP_BASE;
-#define CHECK0(c) do{ if(!(c)){printf("FAIL %s\n",#c);exit(1);} }while(0)
 static int restored=-1; static uint32_t rsize;
 void MB_RamRestore(uint32_t a, uint32_t size, uint32_t *buf){ restored=a; rsize=size; CHECK0(buf==(uint32_t*)(gFlashBuffer+0x1000)); memset(iflash,0xFF,MB_INT_APP_SIZE); memcpy(iflash,spi+a,size); longjmp(jb,1); }
 #define CHECK(c) do{ if(!(c)){printf("FAIL line %d: %s\n",__LINE__,#c);exit(1);} }while(0)
@@ -94,5 +100,34 @@ int main(void){
  CHECK(MB_ReadState(&st)==MB_STATE_VALID); // record in A, foreign data in B
  spi[MB_STATE_A+8]^=1; CHECK(MB_ReadState(&st)==MB_STATE_CORRUPT);
  uint8_t hdr0[64]; memcpy(hdr0,spi,64); fillimg(iflash,5); writes=0; MB_BootCheck(); CHECK(writes==0 && !memcmp(hdr0,spi,64));
+ // 10. config banks
+ { memset(spi+MB_STATE_A,0xFF,8192); fillimg(iflash,6); MB_BootCheck();   // fresh state, slot 0, bank 0
+   CHECK(MB_ActiveBank()==0 && gSFLASH_BankReady);
+   uint8_t cfg[SFLASH_BANK_SIZE]; for(size_t i=0;i<sizeof cfg;i++) cfg[i]=rand(); memcpy(spi+SFLASH_BANK_START,cfg,sizeof cfg);
+   // banks 1-4 hold voice data, never initialised
+   for(int i=0x60000;i<0xE0000;i++) spi[i]=rand();
+   writeslot(1,7,0xE000); writeslot(2,8,0xEC00);
+   restored=-1; CHECK(RESTORE(1)==100 && restored==0x11000);
+   CHECK(!memcmp(spi+0x60000,cfg,sizeof cfg));              // bank 1 copied from bank 0
+   CHECK(MB_ReadState(&st)==MB_STATE_VALID && st.Slot==1 && st.Bank==1);
+   MB_BootCheck(); CHECK(MB_ActiveBank()==1);
+   // config accesses now go to bank 1
+   uint8_t b[16]; SFLASH_Read(b,0x3C1030,16); CHECK(!memcmp(b,cfg+0x30,16));
+   SFLASH_Erase(0x3C1); SFLASH_Write("bank1",0x3C1000,5); CHECK(!memcmp(spi+0x60000,"bank1",5) && !memcmp(spi+SFLASH_BANK_START,cfg,16));
+   SFLASH_ReadRaw(b,0x3C1000,16); CHECK(!memcmp(b,cfg,16));   // raw read ignores the bank
+   // calibration and fonts are shared
+   SFLASH_Read(b,0x3BF000,16); CHECK(!memcmp(b,spi+0x3BF000,16)); SFLASH_Read(b,0x3D6000,16); CHECK(!memcmp(b,spi+0x3D6000,16));
+   // slot 2 from bank 1: bank 2 is a copy of bank 1
+   restored=-1; CHECK(RESTORE(2)==100 && restored==0x21000);
+   CHECK(!memcmp(spi+0x80000,"bank1",5) && !memcmp(spi+0x80000+0x1000,cfg+0x1000,sizeof cfg-0x1000));
+   MB_BootCheck(); CHECK(MB_ActiveBank()==2);
+   // back to slot 1: bank 1 already initialised, kept as is
+   memcpy(b,spi+0x60000,16); restored=-1; CHECK(RESTORE(1)==100); CHECK(!memcmp(spi+0x60000,b,16));
+   MB_BootCheck(); CHECK(MB_ActiveBank()==1);
+   // back to slot 0: bank 0 untouched by all of this
+   restored=-1; CHECK(RESTORE(0)==100); MB_BootCheck(); CHECK(MB_ActiveBank()==0 && !memcmp(spi+SFLASH_BANK_START,cfg,sizeof cfg));
+   // a bank whose marker is lost is never used
+   restored=-1; CHECK(RESTORE(1)==100); spi[0x60000+MB_BANK_MARKER]^=1; MB_BootCheck(); CHECK(MB_ActiveBank()==0);
+ }
  printf("all host tests passed\n");
  return 0;}

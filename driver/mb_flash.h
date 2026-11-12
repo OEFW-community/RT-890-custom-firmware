@@ -77,7 +77,19 @@ enum {
 	MB_ERR_RAM_LOAD,	// 9: RAM code copy mismatch
 	MB_ERR_VERIFY,		// 10: read back mismatch after a write
 	MB_ERR_STATE,		// 11: active state could not be written
+	MB_ERR_BANK,		// 12: config bank copy failed
 };
+
+// Config banks. Bank 0 is the historical config range (SFLASH_BANK_START,
+// 0x3C1000-0x3D5FFF, see driver/serial-flash.h); banks 1 to 4 are 128 KB
+// areas holding a copy of that range. A bank is initialised by copying the
+// active bank into it, then writing a marker in its last sector (the area is
+// never assumed erased: it may still hold voice prompt data).
+#define MB_BANK_COUNT		5U
+#define MB_BANK1_BASE		0x00060000U
+#define MB_BANK_STRIDE		0x00020000U
+#define MB_BANK_MARKER		0x0001F000U	// marker offset in a bank
+#define MB_BANK_MAGIC		0x4B424D46U	// "FMBK"
 
 // Active state: identity of the firmware expected in the internal flash and
 // the slot / config bank it comes from. Stored in two alternating SPI flash
@@ -132,6 +144,12 @@ uint8_t MB_ValidateSlot(uint8_t Slot, MB_SlotHeader_t *pHeader, uint32_t *pCrc);
 // Erases a whole slot (header and image). SPI flash only.
 uint8_t MB_EraseSlot(uint8_t Slot);
 
+// Physical base of a config bank.
+uint32_t MB_BankBase(uint8_t Bank);
+
+// Config bank selected at boot by MB_BootCheck().
+uint8_t MB_ActiveBank(void);
+
 // Reads the newest valid active state record. Returns MB_STATE_*.
 uint8_t MB_ReadState(MB_State_t *pState);
 
@@ -140,12 +158,14 @@ uint8_t MB_ReadState(MB_State_t *pState);
 // multiboot, e.g. with the factory bootloader), or if there is no state yet,
 // the running firmware becomes "Main": it is copied to slot 0 and recorded as
 // active (slot 0, bank 0). Nothing is written when the state is corrupt.
-// SPI flash only.
+// Then selects the config bank of the state (bank 0 if there is no valid
+// state, or if that bank is not initialised). SPI flash only.
 void MB_BootCheck(void);
 
 // Reflashes the internal application area from a slot. The slot is fully
-// validated and the battery checked before anything is erased, then the slot
-// is recorded as active (with config bank = slot). On success the radio resets
+// validated and the battery checked before anything is erased. If config
+// bank "Slot" is not initialised yet, the active bank is copied into it. Then
+// the slot is recorded as active (with config bank = slot). On success the radio resets
 // and this function never returns; otherwise it returns an MB_ERR_* code and
 // the internal flash has not been modified.
 uint8_t MB_RestoreSlot(uint8_t Slot);

@@ -65,7 +65,7 @@ uint32_t MB_SpiCrc32(uint32_t Address, uint32_t Size)
 
 	while (Size) {
 		Chunk = Size < sizeof(Buffer) ? Size : sizeof(Buffer);
-		SFLASH_Read(Buffer, Address, Chunk);
+		SFLASH_ReadRaw(Buffer, Address, Chunk);
 		Crc = MB_Crc32(Crc, Buffer, Chunk);
 		Address += Chunk;
 		Size -= Chunk;
@@ -207,6 +207,67 @@ static uint8_t BackupInternalToSlot0(uint32_t Crc)
 	return MB_ValidateSlot(0, &Header, NULL) == MB_OK ? MB_OK : MB_ERR_VERIFY;
 }
 
+static uint8_t gActiveBank;
+
+uint32_t MB_BankBase(uint8_t Bank)
+{
+	return Bank ? MB_BANK1_BASE + ((uint32_t)(Bank - 1) * MB_BANK_STRIDE) : SFLASH_BANK_START;
+}
+
+uint8_t MB_ActiveBank(void)
+{
+	return gActiveBank;
+}
+
+// Bank 0 (historical config range) is always initialised.
+static bool BankReady(uint8_t Bank)
+{
+	uint32_t Marker[2];
+
+	if (Bank == 0) {
+		return true;
+	}
+	if (Bank >= MB_BANK_COUNT) {
+		return false;
+	}
+	SFLASH_ReadRaw(Marker, MB_BankBase(Bank) + MB_BANK_MARKER, sizeof(Marker));
+
+	return Marker[0] == MB_BANK_MAGIC && Marker[1] == ((uint32_t)Bank | ((uint32_t)(uint8_t)~Bank << 8));
+}
+
+// Copies config bank Src into bank Dst (1 to 4), verifies it, then writes the
+// marker of Dst. Uses gFlashBuffer.
+static uint8_t CopyBank(uint8_t Dst, uint8_t Src)
+{
+	const uint32_t SrcBase = MB_BankBase(Src);
+	const uint32_t DstBase = MB_BankBase(Dst);
+	uint32_t Marker[2];
+	uint32_t Offset;
+
+	HARDWARE_EnableInterrupts(false);
+	// The marker goes first: a copy interrupted by a power loss is never
+	// mistaken for an initialised bank.
+	SFLASH_Erase((DstBase + MB_BANK_MARKER) >> 12);
+	for (Offset = 0; Offset < SFLASH_BANK_SIZE; Offset += 0x1000U) {
+		SFLASH_ReadRaw(gFlashBuffer, SrcBase + Offset, 0x1000);
+		SFLASH_Erase((DstBase + Offset) >> 12);
+		SFLASH_Write(gFlashBuffer, DstBase + Offset, 0x1000);
+	}
+	HARDWARE_EnableInterrupts(true);
+
+	if (MB_SpiCrc32(DstBase, SFLASH_BANK_SIZE) != MB_SpiCrc32(SrcBase, SFLASH_BANK_SIZE)) {
+		return MB_ERR_BANK;
+	}
+
+	Marker[0] = MB_BANK_MAGIC;
+	Marker[1] = (uint32_t)Dst | ((uint32_t)(uint8_t)~Dst << 8);
+	HARDWARE_EnableInterrupts(false);
+	SFLASH_Write(Marker, DstBase + MB_BANK_MARKER, sizeof(Marker));
+	HARDWARE_EnableInterrupts(true);
+
+	return BankReady(Dst) ? MB_OK : MB_ERR_BANK;
+}
+
 static uint32_t StateCrc(const MB_State_t *pState)
 {
 	return MB_Crc32(0, (const uint8_t *)pState, offsetof(MB_State_t, StateCrc32));
@@ -294,7 +355,8 @@ static uint8_t CommitState(uint8_t Slot, uint8_t Bank, uint32_t ImageSize, uint3
 	return MB_OK;
 }
 
-void MB_BootCheck(void)
+// Running firmware check, see MB_BootCheck(). Returns the config bank to use.
+static uint8_t CheckRunningFirmware(void)
 {
 	MB_State_t State;
 	uint32_t Crc;
@@ -303,7 +365,7 @@ void MB_BootCheck(void)
 	case MB_STATE_VALID:
 		if (MB_InternalCrc32(State.ImageSize) == State.ImageCrc32) {
 			// Expected firmware: normal boot.
-			return;
+			return State.Bank;
 		}
 		// Flashed outside of the multiboot: this is the new Main.
 		break;
@@ -314,7 +376,7 @@ void MB_BootCheck(void)
 
 	default:
 		// Uncertain: never overwrite Main.
-		return;
+		return 0;
 	}
 
 	// Red LED while the SPI flash is written (a few seconds, once).
@@ -325,6 +387,20 @@ void MB_BootCheck(void)
 		CommitState(0, 0, MB_INT_APP_SIZE, Crc);
 	}
 	gpio_bits_reset(GPIOA, BOARD_GPIOA_LED_RED);
+
+	return 0;
+}
+
+void MB_BootCheck(void)
+{
+	uint8_t Bank = CheckRunningFirmware();
+
+	// A bank without its marker is never used: fall back to bank 0.
+	if (!BankReady(Bank)) {
+		Bank = 0;
+	}
+	gActiveBank = Bank;
+	SFLASH_SetBankBase(MB_BankBase(Bank));
 }
 
 uint8_t MB_RestoreSlot(uint8_t Slot)
@@ -343,6 +419,15 @@ uint8_t MB_RestoreSlot(uint8_t Slot)
 	gBatteryVoltage = BATTERY_GetVoltage();
 	if (gBatteryVoltage <= gCalibration.BatteryCalibration[2]) {
 		return MB_ERR_BATTERY;
+	}
+
+	// Config bank of the slot: initialised from the active bank on first
+	// use. Done before the RAM code is loaded (both use gFlashBuffer).
+	if (!BankReady(Slot)) {
+		Error = CopyBank(Slot, gActiveBank);
+		if (Error != MB_OK) {
+			return Error;
+		}
 	}
 
 	if (!LoadRamCode()) {
