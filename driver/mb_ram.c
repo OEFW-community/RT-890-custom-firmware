@@ -178,10 +178,12 @@ MB_RAM static bool WriteSector(uint32_t Address, const uint32_t *pData)
 	return true;
 }
 
-MB_RAM void MB_RamRestore(uint32_t SpiAddress, uint32_t *pBuffer)
+MB_RAM void MB_RamRestore(uint32_t SpiAddress, uint32_t ImageSize, uint32_t *pBuffer)
 {
 	uint32_t Offset;
 	uint32_t Retry;
+	uint32_t Size;
+	uint32_t i;
 
 	__disable_irq();
 
@@ -192,7 +194,19 @@ MB_RAM void MB_RamRestore(uint32_t SpiAddress, uint32_t *pBuffer)
 	FLASH->sts = MB_FLASH_FLAGS;
 
 	for (Offset = 0; Offset < MB_INT_APP_SIZE; Offset += MB_INT_SECTOR_SIZE) {
-		SpiRead(SpiAddress + Offset, (uint8_t *)pBuffer, MB_INT_SECTOR_SIZE);
+		// Only CRC-validated image bytes are read; the rest of the area is
+		// erased (0xFF), never filled with leftovers of the slot.
+		for (i = 0; i < MB_SECTOR_WORDS; i++) {
+			((volatile uint32_t *)pBuffer)[i] = 0xFFFFFFFFU;
+		}
+		Size = 0;
+		if (Offset < ImageSize) {
+			Size = ImageSize - Offset;
+			if (Size > MB_INT_SECTOR_SIZE) {
+				Size = MB_INT_SECTOR_SIZE;
+			}
+		}
+		SpiRead(SpiAddress + Offset, (uint8_t *)pBuffer, Size);
 		for (Retry = 0; Retry < MB_SECTOR_RETRIES; Retry++) {
 			if (WriteSector(MB_INT_APP_BASE + Offset, pBuffer)) {
 				break;
@@ -216,27 +230,3 @@ MB_RAM void MB_RamRestore(uint32_t SpiAddress, uint32_t *pBuffer)
 	FLASH->ctrl |= MB_FLASH_OPLK;
 	SystemReset();
 }
-
-MB_RAM void MB_RamProbe(MB_Probe_t *pProbe, uint32_t SpiAddress)
-{
-	uint32_t PriMask = __get_PRIMASK();
-
-	__disable_irq();
-
-	pProbe->IntFirst = *(const volatile uint32_t *)MB_INT_APP_BASE;
-	pProbe->IntLast = *(const volatile uint32_t *)(MB_INT_APP_BASE + MB_INT_APP_SIZE - 4U);
-
-	pProbe->CtrlBefore = FLASH->ctrl;
-	if (FLASH->ctrl & MB_FLASH_OPLK) {
-		FLASH->unlock = MB_FLASH_KEY1;
-		FLASH->unlock = MB_FLASH_KEY2;
-	}
-	pProbe->CtrlUnlocked = FLASH->ctrl;
-	FLASH->ctrl |= MB_FLASH_OPLK;
-	pProbe->CtrlLocked = FLASH->ctrl;
-
-	SpiRead(SpiAddress, pProbe->Spi, sizeof(pProbe->Spi));
-
-	__set_PRIMASK(PriMask);
-}
-

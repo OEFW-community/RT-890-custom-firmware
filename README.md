@@ -78,17 +78,16 @@ make
 
 A multiboot / multiconfig feature, inspired by the one of Armel F4HWN for the UV-K1/UV-K5 V3, is being developed.
 It reuses the SPI flash area of the voice prompts (0x000000-0x2CFFFF) to store several firmware images and
-configuration banks. It is **not functional yet**: only milestones M0 (read-only diagnostics), M1a
-(self test of the restore building blocks, backup of the running firmware to SPI slot 0) and M1b (reflash of
-the internal flash from slot 0, identical image only) are implemented.
+configuration banks. Implemented so far: firmware slots with validated headers, restore of a slot into the
+internal flash, host tool to write slots (milestones M0 to M2). Not yet: boot selector, configuration banks.
 
 ## Build options
 
 | Option | Default | Effect |
 |---|---|---|
 | `ENABLE_VOICE_PROMPT` | 1 | Voice prompts. Forced to 0 by `ENABLE_MULTIBOOT`. |
-| `ENABLE_MULTIBOOT` | 0 | Multiboot support. Also disables voice prompts and spectrum presets, and enables UART command 0x54. |
-| `ENABLE_MB_DIAG` | 0 | Diagnostic screen (requires `ENABLE_MULTIBOOT`). |
+| `ENABLE_MULTIBOOT` | 0 | Multiboot support. Also disables voice prompts and spectrum presets, and enables UART commands 0x54 and 0x61-0x63. |
+| `ENABLE_MB_DIAG` | 0 | Temporary multiboot test screen (requires `ENABLE_MULTIBOOT`). |
 
 Run `make clean` whenever you change build options.
 
@@ -97,70 +96,82 @@ make clean
 make ENABLE_MULTIBOOT=1 ENABLE_MB_DIAG=1
 ```
 
-## M0: diagnostics (read-only)
+## Memory map
 
-Nothing below writes to the radio.
+| SPI flash address | Content |
+|---|---|
+| 0x000000-0x00FFFF | Slot 0 "Main": backup of the running firmware, written by the radio only |
+| 0x010000-0x04FFFF | Slots 1 to 4, written by the host |
+| 0x050000-0x2CFFFF | Reserved (multiboot state, configuration banks, future use) |
 
-* **Diagnostic screen**: hold **MENU** while powering on. It shows:
-  * `SPI`: JEDEC ID of the SPI flash (manufacturer, type, capacity code) and its size in KB,
-  * `FSZ`: internal flash size register (KB, hexadecimal),
-  * `USD`: user system data register (bit 1 = FAP, flash access protection),
-  * `EPP`: erase/program protection status (a 0 bit means a protected sector group),
-  * `SLB`: security library (sLib) status.
+Each slot is 64 KB: a 4 KB header sector, then the image (at most 60416 bytes) at offset 0x1000.
+The 64 byte header (little endian) is: magic `FMB1` (u32 0x31424D46), header version (u16, 1), flags (u16, bit 0 =
+committed), image size (u32, multiple of 4), image CRC-32 (u32, zlib), name (16 bytes), version (16 bytes),
+reserved (16 bytes). The image is written first and the committed header last.
 
-  Press **EXIT** to go to the second page.
-* **Backups** with `tools/mb_tool.py` (Python 3 + `pip install pyserial`), radio powered on normally
-  (not in bootloader mode), programming cable connected:
-  ```
-  python3 tools/mb_tool.py -p /dev/ttyUSB0 dump-spi spi_backup.bin
-  python3 tools/mb_tool.py -p /dev/ttyUSB0 dump-int int_backup.bin
-  ```
-  `dump-spi` reads the whole 4 MB SPI flash with command 0x52 (`--size` / `--start` to change the range;
-  a full dump takes several minutes). `dump-int` reads the 64 KB internal flash (factory bootloader at
-  0x08000000-0x080013FF and application) with the new command 0x54, available when built with `ENABLE_MULTIBOOT`.
+## Test screen (`ENABLE_MB_DIAG`)
 
-  **Keep these backups safe**: the SPI flash holds the calibration of your radio, which is unique to it.
+Hold **MENU** while powering on. Each line shows a slot: number, name and CRC of its header, or `-N` with the
+header error code. The bottom line shows the CRC-32 of the running firmware (`INT`), which is also the CRC-32 of
+its 60416 byte `firmware.bin`.
 
-Results and the analysis of the factory bootloader are in [docs/multiboot-hardware-notes.md](docs/multiboot-hardware-notes.md).
+* **MENU**: copy the running firmware to slot 0 ("Main", version = git hash) and verify it.
+* **0** to **4**, then **MENU** to confirm: restore that slot into the internal flash.
+* **EXIT**: continue booting.
 
-## M1a: restore building blocks (no internal flash erase)
+Before anything is erased, the slot is fully validated (header, image CRC, vector table, the same checks as the
+factory bootloader) and the battery level checked. Otherwise `Refused, error N` is shown and nothing is
+modified. Error codes: 1 slot number, 2 no header, 3 header version, 4 not committed, 5 image size, 6 image CRC,
+7 vector table, 8 battery, 9 RAM code load, 10 read back.
 
-The second page of the diagnostic screen loads the RAM-resident restore code over `gFlashBuffer` and runs a
-self test that never erases nor programs the internal flash:
+The restore routine runs from RAM with interrupts disabled. For each of the 59 sectors of 1 KB it reads the SPI
+flash, erases the sector, programs it word by word and reads it back, with up to 3 attempts; bytes past the
+image size are left erased. The green LED toggles after each sector, then the radio resets. Addresses below
+0x08001400 (factory bootloader) are refused by the routine itself. If the radio does not restart correctly,
+power it on while holding **side keys 1 and 2** to enter the factory bootloader and flash a firmware with the
+usual flasher.
 
-* `RRD`: internal flash read back by code running from RAM (checks that FAP does not block it),
-* `UNLK`: flash controller unlocked then locked again,
-* `SPI`: SPI flash read by the RAM-resident bit-banged driver, compared with the normal driver,
-* `INT`: CRC-32 (zlib) of the running firmware, i.e. of the 60416 byte `firmware.bin`,
-* `SL0`: CRC-32 of the image area of SPI slot 0 (0x001000-0x00FBFF).
+The RAM-resident code (`driver/mb_ram.c`, section `.mb_ramfunc`, linked over `gFlashBuffer`) is checked after
+every multiboot link by `tools/check_mb_ramfunc.py`: all its branches must stay inside the section and its object
+must not contain any relocation, i.e. any reference to code or data in the internal flash.
 
-Key **1** copies the running firmware to SPI slot 0 and verifies it (`BKP`); afterwards `SL0` must equal `INT`.
-This writes the SPI flash only (0x000000-0x00FFFF, former voice prompts). **EXIT** continues booting.
+## Host tool
 
-## M1b: reflash from slot 0 (test of the restore routine)
+`tools/mb_tool.py` (Python 3 + `pip install pyserial`), radio powered on normally (not in bootloader mode),
+programming cable connected:
 
-Key **2** on the second page, confirmed with **MENU**, reflashes the internal application area from slot 0.
-For this milestone the slot image must be identical to the running firmware (same CRC-32): run the backup
-(key **1**) first. Before anything is erased the firmware also checks the vector table of the image (same
-checks as the factory bootloader) and the battery level; if a check fails, `Refused, error N` is shown and
-nothing is modified (1: CRC, 2: vector table, 3: battery, 4: RAM code load).
+```
+python3 tools/mb_tool.py -p /dev/ttyUSB0 dump-spi spi_backup.bin
+python3 tools/mb_tool.py -p /dev/ttyUSB0 dump-int int_backup.bin
+python3 tools/mb_tool.py -p /dev/ttyUSB0 info
+python3 tools/mb_tool.py -p /dev/ttyUSB0 write-slot 1 firmware.bin --name "My build" --fw-version 1.0
+python3 tools/mb_tool.py -p /dev/ttyUSB0 validate 1
+```
 
-The routine runs from RAM with interrupts disabled. For each of the 59 sectors of 1 KB it reads the SPI flash,
-erases the sector, programs it word by word and reads it back, with up to 3 attempts. The green LED toggles
-after each sector, then the radio resets. Addresses below 0x08001400 (factory bootloader) are refused by the
-routine itself.
+* `dump-spi` reads the SPI flash (whole 4 MB by default, `--start` / `--size` to change the range; several
+  minutes). **Keep this backup safe**: the SPI flash holds the calibration of your radio, which is unique to it.
+* `dump-int` reads the 64 KB internal flash (factory bootloader and application).
+* `write-slot` only accepts slots 1 to 4 and images that look like an RT-890 application (vector table).
 
-If the radio does not restart correctly, power it on while holding **side keys 1 and 2** to enter the factory
-bootloader and flash a firmware with the usual flasher.
+UART commands added by `ENABLE_MULTIBOOT` (same framing and checksum as the existing commands):
 
-The RAM-resident code (`driver/mb_ram.c`, section `.mb_ramfunc`) is checked after every multiboot link by
-`tools/check_mb_ramfunc.py`: all its branches must stay inside the section and its object must not contain any
-relocation, i.e. any reference to code or data in the internal flash. The build fails otherwise.
+| Command | Frame | Answer |
+|---|---|---|
+| 0x54 | `54 Hi Lo Sum` | internal flash block Hi:Lo (128 bytes from 0x08000000), like 0x52 |
+| 0x61 | `61 Slot 00 Sum` | erase slot 1-4, `06` or `FF` |
+| 0x62 | `62 Hi Lo Data[128] Sum` | program 128 bytes at SPI address Hi:Lo × 128, slots 1-4 only, `06` or `FF` |
+| 0x63 | `63 Slot 00 Sum` | `63 Slot Status Crc32[4] Sum`: full validation of a slot |
+
+Hardware findings and the analysis of the factory bootloader are in
+[docs/multiboot-hardware-notes.md](docs/multiboot-hardware-notes.md).
 
 ## Warnings
 
 * Do not use voice prompt upload tools on a radio running a multiboot firmware: they erase the whole
   0x000000-0x2CFFFF area, which will hold the firmware slots.
+* Restoring a firmware without multiboot support (stock Radtel firmware, other builds) is a one way trip:
+  it has no way back to the slots. Use the factory bootloader (side keys 1 + 2 at power on) to return.
+  Such a firmware may also read the slots as voice prompts: disable "Voice Prompt" first.
 
 # License
 

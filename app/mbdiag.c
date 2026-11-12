@@ -14,40 +14,23 @@
  *     limitations under the License.
  */
 
-#include <at32f421.h>
 #include "app/mbdiag.h"
 #include "driver/key.h"
 #include "driver/mb_flash.h"
-#include "driver/serial-flash.h"
 #include "helper/helper.h"
 #include "misc.h"
 #include "ui/gfx.h"
 #include "ui/helper.h"
 
-// AT32F421 flash size register (in KB), in the system memory area.
-#define MBDIAG_FLASH_SIZE_REG	(*(const volatile uint16_t *)0x1FFFF7E0U)
-
 static const char Hex[] = "0123456789ABCDEF";
 
-// Draws "<Label> <Digits hex digits of Value>" on one line.
-static void DrawHexLine(uint8_t Y, const char *pLabel, uint32_t Value, uint8_t Digits)
+static void ToHex(char *pString, uint32_t Value)
 {
 	uint8_t i;
 
-	gString[0] = pLabel[0];
-	gString[1] = pLabel[1];
-	gString[2] = pLabel[2];
-	gString[3] = ' ';
-	for (i = 0; i < Digits; i++) {
-		gString[4 + i] = Hex[(Value >> ((Digits - 1 - i) * 4)) & 0xFU];
+	for (i = 0; i < 8; i++) {
+		pString[i] = Hex[(Value >> ((7 - i) * 4)) & 0xFU];
 	}
-	UI_DrawString(0, Y, gString, 4 + Digits);
-}
-
-static void DrawResult(uint8_t Y, const char *pLabel, bool bOk)
-{
-	UI_DrawString(0, Y, pLabel, 4);
-	UI_DrawString(40, Y, bOk ? "OK  " : "FAIL", 4);
 }
 
 static void WaitKey(KEY_t Key)
@@ -63,50 +46,77 @@ static void ClearScreen(void)
 	DISPLAY_Fill(0, 159, 0, 96, COLOR_BACKGROUND);
 }
 
-// Page 2 (milestone M1a): non destructive test of the restore building blocks
-// running from RAM, and backup of the running firmware to SPI slot 0.
-static void DrawProbePage(void)
+static void DrawMessage(const char *pString, uint8_t Error)
 {
-	MB_Probe_t Probe;
-	uint8_t Spi[sizeof(Probe.Spi)];
-	bool bLoaded;
+	uint8_t Size = 0;
+
+	while (pString[Size]) {
+		gString[Size] = pString[Size];
+		Size++;
+	}
+	if (Error) {
+		gString[Size++] = ' ';
+		gString[Size++] = '0' + Error / 10;
+		gString[Size++] = '0' + Error % 10;
+	}
+	ClearScreen();
+	UI_DrawString(0, 80, gString, Size);
+	UI_DrawString(0, 0, "EXIT: back", 10);
+	WaitKey(KEY_EXIT);
+}
+
+// One line per slot: "<n> <name, 8 chars> <claimed CRC>", or the header
+// error code. The image CRC itself is checked before any restore.
+static void DrawSlots(void)
+{
+	MB_SlotHeader_t Header;
+	uint8_t Slot;
+	uint8_t Error;
 	uint8_t i;
 
 	ClearScreen();
-	UI_DrawString(0, 80, "Testing...", 10);
-
-	// Calibration page: known, non erased content.
-	SFLASH_Read(Spi, 0x3BF000, sizeof(Spi));
-	bLoaded = MB_RunProbe(&Probe, 0x3BF000);
-	for (i = 0; i < sizeof(Spi) && Probe.Spi[i] == Spi[i]; i++) {
+	for (Slot = 0; Slot < MB_SLOT_COUNT; Slot++) {
+		for (i = 0; i < 19; i++) {
+			gString[i] = ' ';
+		}
+		gString[0] = '0' + Slot;
+		Error = MB_ReadSlotHeader(Slot, &Header);
+		if (Error == MB_OK) {
+			for (i = 0; i < 8 && Header.Name[i] >= ' ' && Header.Name[i] <= '~'; i++) {
+				gString[2 + i] = Header.Name[i];
+			}
+			ToHex(gString + 11, Header.ImageCrc32);
+		} else {
+			gString[2] = '-';
+			gString[3] = '0' + Error;
+		}
+		UI_DrawString(0, 80 - (Slot * 16), gString, 19);
 	}
-
-	ClearScreen();
-	if (!bLoaded) {
-		DrawResult(80, "LOAD", false);
-	} else {
-		// FAP: internal flash readable from RAM-resident code.
-		DrawResult(80, "RRD ",
-			Probe.IntFirst == *(const uint32_t *)MB_INT_APP_BASE &&
-			Probe.IntLast == *(const uint32_t *)(MB_INT_APP_BASE + MB_INT_APP_SIZE - 4U));
-		// Flash controller unlocked (oplk = 0), then locked again (oplk = 1).
-		DrawResult(64, "UNLK", !(Probe.CtrlUnlocked & 0x80U) && (Probe.CtrlLocked & 0x80U));
-		// SPI flash read by the RAM-resident bit-banged driver.
-		DrawResult(48, "SPI ", i == sizeof(Spi));
-	}
-	DrawHexLine(32, "INT", MB_InternalCrc32(), 8);
-	DrawHexLine(16, "SL0", MB_SpiCrc32(MB_SLOT_BASE(0) + MB_SLOT_IMG_OFFSET, MB_INT_APP_SIZE), 8);
-	UI_DrawString(0, 0, "1:Bkp 2:Rst EXIT", 16);
+	gString[0] = 'I';
+	gString[1] = 'N';
+	gString[2] = 'T';
+	gString[3] = ' ';
+	ToHex(gString + 4, MB_InternalCrc32());
+	UI_DrawString(0, 0, gString, 12);
+	UI_DrawString(104, 0, "M:Bkp", 5);
 }
 
-// Milestone M1b: reflash the internal flash from slot 0, after confirmation.
-static void RestorePage(void)
+static void RestoreSlot(uint8_t Slot)
 {
-	uint8_t Error;
 	KEY_t Key;
 
 	ClearScreen();
-	UI_DrawString(0, 80, "Restore slot 0?", 15);
+	gString[0] = 'R';
+	gString[1] = 'e';
+	gString[2] = 's';
+	gString[3] = 't';
+	gString[4] = 'o';
+	gString[5] = 'r';
+	gString[6] = 'e';
+	gString[7] = ' ';
+	gString[8] = '0' + Slot;
+	gString[9] = '?';
+	UI_DrawString(0, 80, gString, 10);
 	UI_DrawString(0, 48, "MENU: yes", 9);
 	UI_DrawString(0, 32, "EXIT: no", 8);
 	do {
@@ -118,77 +128,44 @@ static void RestorePage(void)
 	}
 
 	ClearScreen();
-	UI_DrawString(0, 80, "Restoring...", 12);
+	UI_DrawString(0, 80, "Checking...", 11);
 	UI_DrawString(0, 64, "Do not power off", 16);
-	// Only returns if the image was refused: nothing has been modified.
-	Error = MB_RestoreSlot0();
-	ClearScreen();
-	UI_DrawString(0, 80, "Refused, error", 14);
-	gString[0] = '0' + Error;
-	UI_DrawString(120, 80, gString, 1);
-	UI_DrawString(0, 0, "EXIT: next", 10);
-	WaitKey(KEY_EXIT);
+	// Only returns if the slot was refused: nothing has been modified.
+	DrawMessage("Refused, error", MB_RestoreSlot(Slot));
 }
 
 void MBDIAG_CheckBoot(void)
 {
-	uint32_t JedecId;
-	uint8_t Capacity;
+	KEY_t Key;
+	uint8_t Error;
 
 	if (KEY_GetButton() != KEY_MENU) {
 		return;
 	}
 
-	JedecId = SFLASH_ReadJedecId();
-
 	SCREEN_TurnOn();
-	ClearScreen();
 	gColorForeground = COLOR_FOREGROUND;
+	WaitKey(KEY_NONE);
 
-	// SPI flash: manufacturer, type, capacity code and decoded size in KB.
-	DrawHexLine(80, "SPI", JedecId, 6);
-	Capacity = JedecId & 0xFFU;
-	if (Capacity >= 0x11U && Capacity <= 0x19U) {
-		Int2Ascii(1UL << (Capacity - 10U), 5);
-		UI_DrawString(96, 80, gShortString, 5);
-		UI_DrawString(136, 80, "K", 1);
-	}
-
-	// Internal flash size (KB) and user system data (FAP is bit 1).
-	DrawHexLine(64, "FSZ", MBDIAG_FLASH_SIZE_REG, 4);
-	DrawHexLine(48, "USD", FLASH->usd, 8);
-	// Erase/program protection: a 0 bit means a protected sector group.
-	DrawHexLine(32, "EPP", FLASH->epps, 8);
-	// Security library state (slib_enf, em_slib_enf, btm_ap_enf).
-	DrawHexLine(16, "SLB", FLASH->slib_sts0, 8);
-	UI_DrawString(0, 0, "EXIT: next", 10);
-	WaitKey(KEY_EXIT);
-
-	DrawProbePage();
 	while (1) {
-		KEY_t Key = KEY_GetButton();
-
+		DrawSlots();
+		do {
+			Key = KEY_GetButton();
+		} while (Key != KEY_EXIT && Key != KEY_MENU && Key > KEY_4);
+		WaitKey(KEY_NONE);
 		if (Key == KEY_EXIT) {
 			break;
 		}
-		if (Key == KEY_1) {
-			WaitKey(KEY_NONE);
+		if (Key == KEY_MENU) {
 			ClearScreen();
-			UI_DrawString(0, 80, "Backup slot 0...", 16);
-			DrawResult(64, "BKP ", MB_BackupInternalToSlot0());
-			UI_DrawString(0, 0, "EXIT: next", 10);
-			WaitKey(KEY_EXIT);
-			DrawProbePage();
-		}
-		if (Key == KEY_2) {
-			WaitKey(KEY_NONE);
-			RestorePage();
-			DrawProbePage();
+			UI_DrawString(0, 80, "Backup to slot 0", 16);
+			Error = MB_BackupInternalToSlot0();
+			DrawMessage(Error == MB_OK ? "Backup OK" : "Backup failed", Error);
+		} else {
+			RestoreSlot(Key);
 		}
 	}
-	WaitKey(KEY_NONE);
 	KEY_KeyCounter = 0;
 
 	ClearScreen();
 }
-

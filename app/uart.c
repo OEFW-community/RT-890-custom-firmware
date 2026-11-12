@@ -16,6 +16,9 @@
 
 #include <string.h>
 #include "app/uart.h"
+#ifdef ENABLE_MULTIBOOT
+#include "driver/mb_flash.h"
+#endif
 #include "bsp/gpio.h"
 #include "driver/pins.h"
 #include "driver/serial-flash.h"
@@ -26,9 +29,13 @@
 #ifdef ENABLE_MULTIBOOT
 #define MB_INT_FLASH_BASE	0x08000000U
 #define MB_INT_FLASH_SIZE	0x10000U
-#define IS_READ_CMD(c)		((c) == 0x52 || (c) == 0x54)
+// 4 byte commands: Cmd Hi Lo Sum
+#define IS_SHORT_CMD(c)		((c) == 0x52 || (c) == 0x54 || (c) == 0x61 || (c) == 0x63)
+// 132 byte commands: Cmd Hi Lo Data[128] Sum
+#define IS_DATA_CMD(c)		(((c) >= 0x40 && (c) <= 0x4C) || (c) == 0x62)
 #else
-#define IS_READ_CMD(c)		((c) == 0x52)
+#define IS_SHORT_CMD(c)		((c) == 0x52)
+#define IS_DATA_CMD(c)		((c) >= 0x40 && (c) <= 0x4C)
 #endif
 
 static uint8_t Buffer[256];
@@ -51,6 +58,47 @@ static uint8_t CalcSum(const uint8_t *pBytes, uint8_t Size)
 
 	return Sum;
 }
+
+#ifdef ENABLE_MULTIBOOT
+// Multiboot slot commands. Host writes are limited to slots 1 to 4: slot 0
+// (backup of the main firmware), the rest of the SPI flash and the internal
+// flash can never be written this way.
+//   0x61 Slot 0 Sum           erase a slot                   -> 0x06 / 0xFF
+//   0x62 Hi Lo Data[128] Sum  program 128 bytes at block Hi:Lo, i.e. at SPI
+//                             address Hi:Lo * 128 (slot must be erased first)
+//                                                            -> 0x06 / 0xFF
+//   0x63 Slot 0 Sum           validate a slot (header, CRC, vectors)
+//                             -> 0x63 Slot Status Crc32[4, little endian] Sum
+static void SlotCmd(uint8_t Command, uint8_t Hi, uint8_t Lo)
+{
+	MB_SlotHeader_t Header;
+	uint32_t Block = (Hi << 8) | Lo;
+	uint32_t Crc = 0;
+
+	if (Command == 0x63) {
+		Buffer[0] = 0x63;
+		Buffer[1] = Hi;
+		Buffer[2] = MB_ValidateSlot(Hi, &Header, &Crc);
+		memcpy(Buffer + 3, &Crc, 4);
+		Buffer[7] = CalcSum(Buffer, 7);
+		UART_Send(Buffer, 8);
+		return;
+	}
+	if (Command == 0x61) {
+		if (Hi == 0 || MB_EraseSlot(Hi) != MB_OK) {
+			UART_SendByte(0xFF);
+			return;
+		}
+	} else {
+		if (Block < MB_SLOT_BASE(1) / 128U || Block >= MB_SLOT_BASE(MB_SLOT_COUNT) / 128U) {
+			UART_SendByte(0xFF);
+			return;
+		}
+		SFLASH_Write(Buffer + 3, Block * 128U, 128U);
+	}
+	UART_SendByte(0x06);
+}
+#endif
 
 static void FlashCmd(uint8_t Command, uint8_t Hi, uint8_t Lo)
 {
@@ -84,6 +132,10 @@ static void FlashCmd(uint8_t Command, uint8_t Hi, uint8_t Lo)
 		memcpy(Buffer + 3, (const void *)(MB_INT_FLASH_BASE + (Block * 128U)), 128);
 		Buffer[131] = CalcSum(Buffer, 0x83);
 		UART_Send(Buffer, 132);
+		return;
+	}
+	if (Command >= 0x61 && Command <= 0x63) {
+		SlotCmd(Command, Hi, Lo);
 		return;
 	}
 #endif
@@ -154,13 +206,13 @@ void HandlerUSART1(void)
 
 		BufferLength %= 256;
 		Cmd = Buffer[0];
-		if (BufferLength == 1 && Cmd != 0x35 && !(Cmd >= 0x40 && Cmd <= 0x4C) && !IS_READ_CMD(Cmd)) {
+		if (BufferLength == 1 && Cmd != 0x35 && !IS_DATA_CMD(Cmd) && !IS_SHORT_CMD(Cmd)) {
 			UART_IsRunning = false;
 			UART_Timer = 0;
 			UART_SendByte(0xFF);
 			BufferLength = 0;
 		} else {
-			if ((Cmd == 0x35 && BufferLength == 5) || (IS_READ_CMD(Cmd) && BufferLength == 4) || (Cmd >= 0x40 && Cmd <= 0x4C && BufferLength == 132)) {
+			if ((Cmd == 0x35 && BufferLength == 5) || (IS_SHORT_CMD(Cmd) && BufferLength == 4) || (IS_DATA_CMD(Cmd) && BufferLength == 132)) {
 				if (CalcSum(Buffer, BufferLength - 1) == Buffer[BufferLength - 1]) {
 					gpio_bits_flip(GPIOA, BOARD_GPIOA_LED_RED);
 					UART_IsRunning = true;

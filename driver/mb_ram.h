@@ -25,32 +25,15 @@
 // unavailable while the restore routine erases and programs it. This is
 // enforced after linking by tools/check_mb_ramfunc.py.
 
-typedef struct {
-	// Internal flash words read by RAM-resident code (FAP check).
-	uint32_t IntFirst;
-	uint32_t IntLast;
-	// FLASH->ctrl before unlocking, after unlocking and after locking again.
-	uint32_t CtrlBefore;
-	uint32_t CtrlUnlocked;
-	uint32_t CtrlLocked;
-	// Bytes read from the SPI flash by the RAM-resident bit-banged driver.
-	uint8_t Spi[16];
-} MB_Probe_t;
-
-// Non destructive self test of the building blocks of the restore routine:
-// reads internal flash words, unlocks then relocks the flash controller (no
-// erase, no program) and reads 16 bytes of SPI flash at SpiAddress.
-// Must only be called through MB_RunProbe() (driver/mb_flash.c).
-void MB_RamProbe(MB_Probe_t *pProbe, uint32_t SpiAddress);
-
 // Rewrites the whole internal application area (59 sectors of 1 KB from
-// 0x08001400) with the image stored in the SPI flash at SpiAddress, then
-// resets the MCU. pBuffer is a 1 KB, word aligned RAM buffer. Interrupts are
-// disabled and the routine never returns: on an unrecoverable sector error it
-// relocks the flash controller and resets immediately. The caller must have
+// 0x08001400) with the ImageSize bytes stored in the SPI flash at SpiAddress
+// (the rest of the area is left erased), then resets the MCU. pBuffer is a
+// 1 KB, word aligned RAM buffer. Interrupts are disabled and the routine never
+// returns: on an unrecoverable sector error it relocks the flash controller
+// and resets immediately. The caller must have
 // validated the image beforehand. Must only be called through
-// MB_RestoreSlot0() (driver/mb_flash.c).
-void MB_RamRestore(uint32_t SpiAddress, uint32_t *pBuffer) __attribute__((noreturn));
+// MB_RestoreSlot() (driver/mb_flash.c).
+void MB_RamRestore(uint32_t SpiAddress, uint32_t ImageSize, uint32_t *pBuffer) __attribute__((noreturn));
 
 #endif
 

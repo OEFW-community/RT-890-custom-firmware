@@ -17,11 +17,10 @@
 #ifndef APP_MBDIAG_H
 #define APP_MBDIAG_H
 
-// Multiboot diagnostic screen, shown when MENU is held at power on.
-// Page 1 (M0): SPI flash JEDEC ID and internal flash protection state.
-// Page 2 (M1a): self test of the RAM-resident restore building blocks (never
-// erases or programs the internal flash), CRCs of the running firmware and of
-// SPI slot 0, and on request (key 1) backup of the running firmware to slot 0.
+// Multiboot test screen (milestone M2), shown when MENU is held at power on:
+// lists the firmware slots, backs up the running firmware to slot 0 (MENU)
+// and restores a slot (keys 0 to 4, confirmed with MENU). Temporary: to be
+// replaced by the boot selector (milestone M4).
 void MBDIAG_CheckBoot(void);
 
 #endif
