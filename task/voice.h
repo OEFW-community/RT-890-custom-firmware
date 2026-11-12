@@ -17,7 +17,11 @@
 #ifndef TASK_VOICE_H
 #define TASK_VOICE_H
 
+#ifdef ENABLE_VOICE_PROMPT
 void Task_VoicePlayer(void);
+#else
+static inline void Task_VoicePlayer(void) { }
+#endif
 
 #endif
 

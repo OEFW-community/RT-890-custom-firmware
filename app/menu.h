@@ -69,7 +69,9 @@ enum {
 	MENU_VOLTAGE,
 	MENU_RINGTONE,
 	MENU_PROMPT_TEXT,
+#ifdef ENABLE_VOICE_PROMPT
 	MENU_VOICE_PROMPT,
+#endif
 	MENU_KEY_BEEP,
 	MENU_K1_LONG,
 	MENU_K1_SHORT,
@@ -117,7 +119,11 @@ void MENU_KeyHandler(uint8_t Key);
 void MENU_Next(uint8_t Key);
 void MENU_SettingKeyHandler(uint8_t Key);
 void MENU_ScrollSetting(uint8_t Key);
+#ifdef ENABLE_VOICE_PROMPT
 void MENU_PlayAudio(uint8_t ID);
+#else
+static inline void MENU_PlayAudio(uint8_t ID) { (void)ID; }
+#endif
 
 #endif
 

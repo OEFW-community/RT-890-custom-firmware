@@ -21,6 +21,8 @@
 
 void SFLASH_Init(void);
 void SFLASH_Read(void *pBuffer, uint32_t Address, uint16_t Size);
+// Returns manufacturer << 16 | memory type << 8 | capacity (JEDEC 0x9F)
+uint32_t SFLASH_ReadJedecId(void);
 void SFLASH_Erase(uint32_t Page);
 void SFLASH_Write(const void *pBuffer, uint32_t Address, uint16_t Size);
 void SFLASH_Update(const void *pBuffer, uint32_t Address, uint16_t Size);

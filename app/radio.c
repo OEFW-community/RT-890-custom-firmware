@@ -18,6 +18,9 @@
 #ifdef ENABLE_FM_RADIO
 	#include "app/fm.h"
 #endif
+#ifdef ENABLE_MB_DIAG
+	#include "app/mbdiag.h"
+#endif
 #include "app/radio.h"
 #include "driver/beep.h"
 #include "driver/bk4819.h"
@@ -222,6 +225,9 @@ void RADIO_Init(void)
 
 	SETTINGS_LoadCalibration();
 	SETTINGS_LoadSettings();
+#ifdef ENABLE_MB_DIAG
+	MBDIAG_CheckBoot();
+#endif
 
 	BK4819_Init();
 	#ifdef ENABLE_AM_FIX

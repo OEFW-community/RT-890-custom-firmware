@@ -74,6 +74,56 @@ make
 
 * Use the firmware.bin file with either [RT-890-Flasher](https://github.com/OEFW-community/radtel-rt-890-flasher) or [RT-890-Flasher-CLI](https://github.com/OEFW-community/radtel-rt-890-flasher-cli)
 
+# Multiboot (work in progress)
+
+A multiboot / multiconfig feature, inspired by the one of Armel F4HWN for the UV-K1/UV-K5 V3, is being developed.
+It reuses the SPI flash area of the voice prompts (0x000000-0x2CFFFF) to store several firmware images and
+configuration banks. It is **not functional yet**: only milestone M0 (read-only diagnostics) is implemented.
+
+## Build options
+
+| Option | Default | Effect |
+|---|---|---|
+| `ENABLE_VOICE_PROMPT` | 1 | Voice prompts. Forced to 0 by `ENABLE_MULTIBOOT`. |
+| `ENABLE_MULTIBOOT` | 0 | Multiboot support. Also disables voice prompts and spectrum presets, and enables UART command 0x54. |
+| `ENABLE_MB_DIAG` | 0 | Diagnostic screen (requires `ENABLE_MULTIBOOT`). |
+
+Run `make clean` whenever you change build options.
+
+```
+make clean
+make ENABLE_MULTIBOOT=1 ENABLE_MB_DIAG=1
+```
+
+## M0: diagnostics (read-only)
+
+Nothing below writes to the radio.
+
+* **Diagnostic screen**: hold **MENU** while powering on. It shows:
+  * `SPI`: JEDEC ID of the SPI flash (manufacturer, type, capacity code) and its size in KB,
+  * `FSZ`: internal flash size register (KB, hexadecimal),
+  * `USD`: user system data register (bit 1 = FAP, flash access protection),
+  * `EPP`: erase/program protection status (a 0 bit means a protected sector group),
+  * `SLB`: security library (sLib) status.
+
+  Press **EXIT** to continue booting.
+* **Backups** with `tools/mb_tool.py` (Python 3 + `pip install pyserial`), radio powered on normally
+  (not in bootloader mode), programming cable connected:
+  ```
+  python3 tools/mb_tool.py -p /dev/ttyUSB0 dump-spi spi_backup.bin
+  python3 tools/mb_tool.py -p /dev/ttyUSB0 dump-int int_backup.bin
+  ```
+  `dump-spi` reads the whole 4 MB SPI flash with command 0x52 (`--size` / `--start` to change the range;
+  a full dump takes several minutes). `dump-int` reads the 64 KB internal flash (factory bootloader at
+  0x08000000-0x080013FF and application) with the new command 0x54, available when built with `ENABLE_MULTIBOOT`.
+
+  **Keep these backups safe**: the SPI flash holds the calibration of your radio, which is unique to it.
+
+## Warnings
+
+* Do not use voice prompt upload tools on a radio running a multiboot firmware: they erase the whole
+  0x000000-0x2CFFFF area, which will hold the firmware slots.
+
 # License
 
 Copyright 2023 Dual Tachyon

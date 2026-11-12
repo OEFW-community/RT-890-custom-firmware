@@ -133,6 +133,26 @@ void SFLASH_Read(void *pBuffer, uint32_t Address, uint16_t Size)
 	}
 }
 
+uint32_t SFLASH_ReadJedecId(void)
+{
+	uint32_t Id;
+
+	HARDWARE_EnableInterrupts(false);
+
+	gpio_bits_reset(GPIOB, BOARD_GPIOB_SF_CS);
+
+	Transfer(0x9F);
+	Id  = Transfer(0xFF) << 16;
+	Id |= Transfer(0xFF) << 8;
+	Id |= Transfer(0xFF);
+
+	gpio_bits_set(GPIOB, BOARD_GPIOB_SF_CS);
+
+	HARDWARE_EnableInterrupts(true);
+
+	return Id;
+}
+
 void SFLASH_Erase(uint32_t Page)
 {
 	Page <<= 12;

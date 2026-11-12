@@ -14,6 +14,7 @@
  *     limitations under the License.
  */
 
+#include <string.h>
 #include "app/uart.h"
 #include "bsp/gpio.h"
 #include "driver/pins.h"
@@ -21,6 +22,14 @@
 #include "driver/uart.h"
 #include "radio/hardware.h"
 #include "radio/settings.h"
+
+#ifdef ENABLE_MULTIBOOT
+#define MB_INT_FLASH_BASE	0x08000000U
+#define MB_INT_FLASH_SIZE	0x10000U
+#define IS_READ_CMD(c)		((c) == 0x52 || (c) == 0x54)
+#else
+#define IS_READ_CMD(c)		((c) == 0x52)
+#endif
 
 static uint8_t Buffer[256];
 static uint8_t BufferLength;
@@ -60,6 +69,24 @@ static void FlashCmd(uint8_t Command, uint8_t Hi, uint8_t Lo)
 		UART_Send(Buffer, 132);
 		return;
 	}
+#ifdef ENABLE_MULTIBOOT
+	if (Command == 0x54) {
+		// Read-only dump of the internal MCU flash (bootloader + application),
+		// 128 bytes per block from 0x08000000. Used to back up and analyse the
+		// factory bootloader and to verify a multiboot restore.
+		if (Block >= MB_INT_FLASH_SIZE / 128U) {
+			UART_SendByte(0xFF);
+			return;
+		}
+		Buffer[0] = 0x54;
+		Buffer[1] = Hi;
+		Buffer[2] = Lo;
+		memcpy(Buffer + 3, (const void *)(MB_INT_FLASH_BASE + (Block * 128U)), 128);
+		Buffer[131] = CalcSum(Buffer, 0x83);
+		UART_Send(Buffer, 132);
+		return;
+	}
+#endif
 
 	TMR1->ctrl1_bit.tmren = FALSE;
 	// Why? Is this some left over from another radio?
@@ -127,13 +154,13 @@ void HandlerUSART1(void)
 
 		BufferLength %= 256;
 		Cmd = Buffer[0];
-		if (BufferLength == 1 && Cmd != 0x35 && !(Cmd >= 0x40 && Cmd <= 0x4C) && Cmd != 0x52) {
+		if (BufferLength == 1 && Cmd != 0x35 && !(Cmd >= 0x40 && Cmd <= 0x4C) && !IS_READ_CMD(Cmd)) {
 			UART_IsRunning = false;
 			UART_Timer = 0;
 			UART_SendByte(0xFF);
 			BufferLength = 0;
 		} else {
-			if ((Cmd == 0x35 && BufferLength == 5) || (Cmd == 0x52 && BufferLength == 4) || (Cmd >= 0x40 && Cmd <= 0x4C && BufferLength == 132)) {
+			if ((Cmd == 0x35 && BufferLength == 5) || (IS_READ_CMD(Cmd) && BufferLength == 4) || (Cmd >= 0x40 && Cmd <= 0x4C && BufferLength == 132)) {
 				if (CalcSum(Buffer, BufferLength - 1) == Buffer[BufferLength - 1]) {
 					gpio_bits_flip(GPIOA, BOARD_GPIOA_LED_RED);
 					UART_IsRunning = true;

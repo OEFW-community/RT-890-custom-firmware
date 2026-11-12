@@ -255,7 +255,7 @@ static void MAIN_KeyHandler(KEY_t Key)
 			}
 			UI_DrawMainBitmap(false, gSettings.CurrentVfo);
 			gSettings.CurrentVfo ^= 1;
-			gAudioOffsetIndex = gAudioOffsetLast;
+			AUDIO_CancelQueue();
 			RADIO_Tune(gSettings.CurrentVfo);
 			SETTINGS_SaveGlobals();
 			gFrequencyReverse = false;
@@ -285,7 +285,7 @@ static void MAIN_KeyHandler(KEY_t Key)
 				break;
 			}
 			gInputBoxWriteIndex = 0;
-			gAudioOffsetIndex = gAudioOffsetLast;
+			AUDIO_CancelQueue();
 			gSettings.WorkMode ^= 1;
 			SETTINGS_SaveGlobals();
 			if (gSettings.WorkMode) {

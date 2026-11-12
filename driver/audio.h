@@ -20,6 +20,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#ifdef ENABLE_VOICE_PROMPT
 extern uint16_t gAudioTimer;
 extern bool gAudioPlaying;
 extern uint8_t gAudioOffsetLast;
@@ -30,6 +31,16 @@ void AUDIO_PlayMenuSample(uint8_t ID);
 void AUDIO_PlaySampleOptional(uint8_t Index);
 void AUDIO_PlayChannelNumber(void);
 void AUDIO_PlayDigit(uint8_t Digit);
+
+// Drop any queued voice prompt.
+static inline void AUDIO_CancelQueue(void) { gAudioOffsetIndex = gAudioOffsetLast; }
+#else
+// Voice prompts compiled out: the SPI flash area they used is free for other uses.
+static inline void AUDIO_PlaySampleOptional(uint8_t Index) { (void)Index; }
+static inline void AUDIO_PlayChannelNumber(void) { }
+static inline void AUDIO_PlayDigit(uint8_t Digit) { (void)Digit; }
+static inline void AUDIO_CancelQueue(void) { }
+#endif
 
 #endif
 

@@ -87,7 +87,9 @@ static const char Menu[][14] = {
 	"Startup Volt. ",
 	"Startup Tone  ",
 	"Startup Text  ",
+#ifdef ENABLE_VOICE_PROMPT
 	"Voice Prompt  ",
+#endif
 	"Key Beep      ",
 	"Side 1 Long   ",
 	"Side 1 Short  ",
@@ -371,6 +373,7 @@ void MENU_AcceptSetting(void)
 		SETTINGS_SaveGlobals();
 		break;
 
+#ifdef ENABLE_VOICE_PROMPT
 	case MENU_VOICE_PROMPT:
 		gSettings.VoicePrompt = gSettingIndex;
 		if (!gSettings.VoicePrompt) {
@@ -378,6 +381,7 @@ void MENU_AcceptSetting(void)
 		}
 		SETTINGS_SaveGlobals();
 		break;
+#endif
 
 	case MENU_KEY_BEEP:
 		gSettings.KeyBeep = gSettingIndex;
@@ -770,10 +774,12 @@ void MENU_DrawSetting(void)
 		UI_DrawToggle();
 		break;
 
+#ifdef ENABLE_VOICE_PROMPT
 	case MENU_VOICE_PROMPT:
 		gSettingIndex = gSettings.VoicePrompt;
 		UI_DrawToggle();
 		break;
+#endif
 
 	case MENU_KEY_BEEP:
 		gSettingIndex = gSettings.KeyBeep;
@@ -1439,6 +1445,7 @@ void MENU_ScrollSetting(uint8_t Key)
 	}
 }
 
+#ifdef ENABLE_VOICE_PROMPT
 void MENU_PlayAudio(uint8_t MenuID)
 {
 	uint8_t ID = 0;
@@ -1495,4 +1502,5 @@ void MENU_PlayAudio(uint8_t MenuID)
 		AUDIO_PlaySampleOptional(ID);
 	}
 }
+#endif
 

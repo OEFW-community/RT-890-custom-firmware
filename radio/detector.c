@@ -363,7 +363,7 @@ void RADIO_FrequencyDetect(void)
 	gScreenMode = SCREEN_FREQ_DETECT;
 	SPEAKER_State = 0;
 	gpio_bits_reset(GPIOA, BOARD_GPIOA_SPEAKER);
-	gAudioOffsetIndex = gAudioOffsetLast;
+	AUDIO_CancelQueue();
 	gFrequencyDetectMode = true;
 	gVfoState[gSettings.CurrentVfo].RX.Frequency = 10000000;
 	UI_DrawRadar();

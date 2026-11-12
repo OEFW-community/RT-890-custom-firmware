@@ -22,9 +22,23 @@ ENABLE_FM_RADIO			?= 1
 ENABLE_REGISTER_EDIT		?= 0
 # Scanlist membership display - 252 B
 ENABLE_SCANLIST_DISPLAY		?= 1
+# Voice prompts (samples stored in the SPI flash) - 1 kB
+ENABLE_VOICE_PROMPT		?= 1
+# Multiboot: firmware slots + config banks in the former voice prompt area
+# of the SPI flash. Disables voice prompts and spectrum presets.
+ENABLE_MULTIBOOT		?= 0
+# Multiboot diagnostic screen (hold MENU at power on) - requires ENABLE_MULTIBOOT
+ENABLE_MB_DIAG			?= 0
 # Space saving options
 ENABLE_LTO			?= 0
 ENABLE_OPTIMIZED		?= 1
+
+ifeq ($(ENABLE_MULTIBOOT), 1)
+	override ENABLE_VOICE_PROMPT := 0
+	override ENABLE_SPECTRUM_PRESETS := 0
+else
+	override ENABLE_MB_DIAG := 0
+endif
 
 
 OBJS =
@@ -42,7 +56,9 @@ OBJS += bsp/misc.o
 OBJS += bsp/tmr.o
 
 # Drivers
-OBJS += driver/audio.o
+ifeq ($(ENABLE_VOICE_PROMPT), 1)
+	OBJS += driver/audio.o
+endif
 OBJS += driver/battery.o
 OBJS += driver/beep.o
 ifeq ($(ENABLE_FM_RADIO), 1)
@@ -66,6 +82,9 @@ ifeq ($(ENABLE_FM_RADIO), 1)
 	OBJS += app/fm.o
 endif
 OBJS += app/lock.o
+ifeq ($(ENABLE_MB_DIAG), 1)
+	OBJS += app/mbdiag.o
+endif
 OBJS += app/menu.o
 OBJS += app/radio.o
 ifeq ($(ENABLE_REGISTER_EDIT), 1)
@@ -119,7 +138,9 @@ OBJS += task/scanner.o
 OBJS += task/screen.o
 OBJS += task/sidekeys.o
 OBJS += task/timeout.o
-OBJS += task/voice.o
+ifeq ($(ENABLE_VOICE_PROMPT), 1)
+	OBJS += task/voice.o
+endif
 OBJS += task/vox.o
 
 # User Interface
@@ -251,6 +272,15 @@ endif
 ifeq ($(ENABLE_STATUS_BAR_LINE), 1)
 	CFLAGS += -DENABLE_STATUS_BAR_LINE
 endif
+ifeq ($(ENABLE_VOICE_PROMPT), 1)
+	CFLAGS += -DENABLE_VOICE_PROMPT
+endif
+ifeq ($(ENABLE_MULTIBOOT), 1)
+	CFLAGS += -DENABLE_MULTIBOOT
+endif
+ifeq ($(ENABLE_MB_DIAG), 1)
+	CFLAGS += -DENABLE_MB_DIAG
+endif
 
 
 all: $(TARGET)
@@ -276,4 +306,5 @@ $(TARGET): $(OBJS)
 -include $(DEPS)
 
 clean:
-	rm -f $(TARGET).bin $(TARGET) $(OBJS) $(DEPS)
+	rm -f $(TARGET).bin $(TARGET)
+	find . \( -name '*.o' -o -name '*.d' \) -not -path './.git/*' -delete

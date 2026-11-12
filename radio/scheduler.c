@@ -92,9 +92,11 @@ void HandlerTMR1_BRK_OVF_TRG_HALL(void)
 	if (gEnableLocalAlarm && !gSendTone) {
 		gAlarmCounter++;
 	}
+#ifdef ENABLE_VOICE_PROMPT
 	if (gAudioTimer) {
 		gAudioTimer--;
 	}
+#endif
 	if (VOX_Timer) {
 		VOX_Timer--;
 	}
