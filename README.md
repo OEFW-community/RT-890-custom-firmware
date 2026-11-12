@@ -119,6 +119,8 @@ Nothing below writes to the radio.
 
   **Keep these backups safe**: the SPI flash holds the calibration of your radio, which is unique to it.
 
+Results and the analysis of the factory bootloader are in [docs/multiboot-hardware-notes.md](docs/multiboot-hardware-notes.md).
+
 ## Warnings
 
 * Do not use voice prompt upload tools on a radio running a multiboot firmware: they erase the whole
