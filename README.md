@@ -78,7 +78,8 @@ make
 
 A multiboot / multiconfig feature, inspired by the one of Armel F4HWN for the UV-K1/UV-K5 V3, is being developed.
 It reuses the SPI flash area of the voice prompts (0x000000-0x2CFFFF) to store several firmware images and
-configuration banks. It is **not functional yet**: only milestone M0 (read-only diagnostics) is implemented.
+configuration banks. It is **not functional yet**: only milestones M0 (read-only diagnostics) and M1a
+(self test of the restore building blocks, backup of the running firmware to SPI slot 0) are implemented.
 
 ## Build options
 
@@ -106,7 +107,7 @@ Nothing below writes to the radio.
   * `EPP`: erase/program protection status (a 0 bit means a protected sector group),
   * `SLB`: security library (sLib) status.
 
-  Press **EXIT** to continue booting.
+  Press **EXIT** to go to the second page.
 * **Backups** with `tools/mb_tool.py` (Python 3 + `pip install pyserial`), radio powered on normally
   (not in bootloader mode), programming cable connected:
   ```
@@ -120,6 +121,24 @@ Nothing below writes to the radio.
   **Keep these backups safe**: the SPI flash holds the calibration of your radio, which is unique to it.
 
 Results and the analysis of the factory bootloader are in [docs/multiboot-hardware-notes.md](docs/multiboot-hardware-notes.md).
+
+## M1a: restore building blocks (no internal flash erase)
+
+The second page of the diagnostic screen loads the RAM-resident restore code over `gFlashBuffer` and runs a
+self test that never erases nor programs the internal flash:
+
+* `RRD`: internal flash read back by code running from RAM (checks that FAP does not block it),
+* `UNLK`: flash controller unlocked then locked again,
+* `SPI`: SPI flash read by the RAM-resident bit-banged driver, compared with the normal driver,
+* `INT`: CRC-32 (zlib) of the running firmware, i.e. of the 60416 byte `firmware.bin`,
+* `SL0`: CRC-32 of the image area of SPI slot 0 (0x001000-0x00FBFF).
+
+Key **1** copies the running firmware to SPI slot 0 and verifies it (`BKP`); afterwards `SL0` must equal `INT`.
+This writes the SPI flash only (0x000000-0x00FFFF, former voice prompts). **EXIT** continues booting.
+
+The RAM-resident code (`driver/mb_ram.c`, section `.mb_ramfunc`) is checked after every multiboot link by
+`tools/check_mb_ramfunc.py`: all its branches must stay inside the section and its object must not contain any
+relocation, i.e. any reference to code or data in the internal flash. The build fails otherwise.
 
 ## Warnings
 

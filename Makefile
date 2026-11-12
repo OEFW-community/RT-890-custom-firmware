@@ -69,6 +69,10 @@ OBJS += driver/crm.o
 OBJS += driver/delay.o
 OBJS += driver/key.o
 OBJS += driver/led.o
+ifeq ($(ENABLE_MULTIBOOT), 1)
+	OBJS += driver/mb_flash.o
+	OBJS += driver/mb_ram.o
+endif
 OBJS += driver/pwm.o
 OBJS += driver/serial-flash.o
 OBJS += driver/speaker.o
@@ -176,6 +180,7 @@ AS = arm-none-eabi-as
 CC = arm-none-eabi-gcc
 LD = arm-none-eabi-gcc
 OBJCOPY = arm-none-eabi-objcopy
+OBJDUMP = arm-none-eabi-objdump
 SIZE = arm-none-eabi-size
 
 GIT_HASH_TMP := $(shell git rev-parse --short HEAD)
@@ -294,6 +299,12 @@ ui/version.o: .FORCE
 
 $(TARGET): $(OBJS)
 	$(LD) $(LDFLAGS) $^ -o $@ $(LIBS)
+ifeq ($(ENABLE_MULTIBOOT),1)
+	python3 tools/check_mb_ramfunc.py --objdump $(OBJDUMP) $@ driver/mb_ram.o || (rm -f $@; false)
+endif
+
+# The RAM-resident multiboot code is checked object by object: never LTO it.
+driver/mb_ram.o: CFLAGS += -fno-lto
 
 %.o: %.c
 	$(CC) $(CFLAGS) $(INC) -c $< -o $@

@@ -31,6 +31,13 @@ SECTIONS
 		_etext = .;        /* global symbols at end   */
 	} >FLASH
 
+	/* Unwind tables pulled from libgcc: placed explicitly so that they stay
+	   before the .data load image. */
+	.ARM.exidx :
+	{
+		*(.ARM.exidx*)
+	} >FLASH
+
 	/* Used by startup code */
 
 	. = ALIGN(4);
@@ -67,6 +74,36 @@ SECTIONS
 		__bss_end__ = _ebss;
 	} >RAM
 
+	/* Multiboot restore overlay (ENABLE_MULTIBOOT only, empty otherwise).
+	   The RAM-resident restore code (.mb_ramfunc, see driver/mb_ram.c) is
+	   linked at the address of gFlashBuffer (.flashbuf) but loaded in FLASH.
+	   It is copied over gFlashBuffer only right before it runs, so it costs
+	   no permanent RAM. .flashbuf is not cleared at startup. */
+	.flashbuf ALIGN(ADDR(.bss) + SIZEOF(.bss), 4) (NOLOAD) :
+	{
+		__flashbuf_start = .;
+		KEEP(*(.flashbuf))
+		. = ALIGN(4);
+		__flashbuf_end = .;
+	} >RAM
+
+	.mb_ramfunc __flashbuf_start : AT (LOADADDR(.data) + SIZEOF(.data))
+	{
+		__mb_ramfunc_start = .;
+		KEEP(*mb_ram.o(.mb_ramfunc .mb_ramfunc.*))
+		. = ALIGN(4);
+		__mb_ramfunc_end = .;
+	}
+
+	__mb_ramfunc_load_start = LOADADDR(.mb_ramfunc);
+	__mb_ramfunc_size = SIZEOF(.mb_ramfunc);
+	_eflash_used = LOADADDR(.mb_ramfunc) + SIZEOF(.mb_ramfunc);
+
+	ASSERT(__mb_ramfunc_size == 0 || ADDR(.mb_ramfunc) == ADDR(.flashbuf),
+		"Multiboot RAM code and gFlashBuffer do not share the same address")
+	ASSERT(__mb_ramfunc_size + 0x400 <= SIZEOF(.flashbuf) || __mb_ramfunc_size == 0,
+		"Multiboot RAM code plus its 1 KB sector buffer do not fit in gFlashBuffer")
+
 	/* Check that there is enough RAM */
 	._user_heap_stack :
 	{
@@ -76,7 +113,7 @@ SECTIONS
 		. = ALIGN(4);
 	} >RAM
 
-	.fill :
+	.fill _eflash_used :
 	{
 		. = ORIGIN(FLASH) + LENGTH(FLASH) - 1;
 		BYTE(0x00)

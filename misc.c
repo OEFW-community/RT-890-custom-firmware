@@ -56,5 +56,10 @@ char gBigString[40];
 
 uint32_t SFLASH_Offsets[20];
 uint32_t SFLASH_FontOffsets[32];
+#ifdef ENABLE_MULTIBOOT
+// Own section: the multiboot RAM code is overlaid on it (see firmware.ld).
+uint8_t gFlashBuffer[8192] __attribute__((section(".flashbuf"), aligned(4)));
+#else
 uint8_t gFlashBuffer[8192];
+#endif
 
