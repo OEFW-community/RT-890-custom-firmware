@@ -18,10 +18,8 @@
 #ifdef ENABLE_FM_RADIO
 	#include "app/fm.h"
 #endif
-#ifdef ENABLE_MB_DIAG
-	#include "app/mbdiag.h"
-#endif
 #ifdef ENABLE_MULTIBOOT
+	#include "app/mbselect.h"
 	#include "driver/mb_flash.h"
 #endif
 #include "app/radio.h"
@@ -231,8 +229,8 @@ void RADIO_Init(void)
 	MB_BootCheck();
 #endif
 	SETTINGS_LoadSettings();
-#ifdef ENABLE_MB_DIAG
-	MBDIAG_CheckBoot();
+#ifdef ENABLE_MULTIBOOT
+	MBSELECT_CheckBoot();
 #endif
 
 	BK4819_Init();

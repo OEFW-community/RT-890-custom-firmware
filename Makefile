@@ -24,20 +24,15 @@ ENABLE_REGISTER_EDIT		?= 0
 ENABLE_SCANLIST_DISPLAY		?= 1
 # Voice prompts (samples stored in the SPI flash) - 1 kB
 ENABLE_VOICE_PROMPT		?= 1
-# Multiboot: firmware slots + config banks in the former voice prompt area
-# of the SPI flash. Disables voice prompts and spectrum presets.
+# Multiboot: firmware slots + config banks in the former voice prompt area of the SPI flash.
+# Require disabling voice prompts (obviously), and for size, spectrum presets and NOAA for example.
 ENABLE_MULTIBOOT		?= 0
-# Multiboot diagnostic screen (hold MENU at power on) - requires ENABLE_MULTIBOOT
-ENABLE_MB_DIAG			?= 0
 # Space saving options
 ENABLE_LTO			?= 0
 ENABLE_OPTIMIZED		?= 1
 
 ifeq ($(ENABLE_MULTIBOOT), 1)
 	override ENABLE_VOICE_PROMPT := 0
-	override ENABLE_SPECTRUM_PRESETS := 0
-else
-	override ENABLE_MB_DIAG := 0
 endif
 
 
@@ -86,8 +81,8 @@ ifeq ($(ENABLE_FM_RADIO), 1)
 	OBJS += app/fm.o
 endif
 OBJS += app/lock.o
-ifeq ($(ENABLE_MB_DIAG), 1)
-	OBJS += app/mbdiag.o
+ifeq ($(ENABLE_MULTIBOOT), 1)
+	OBJS += app/mbselect.o
 endif
 OBJS += app/menu.o
 OBJS += app/radio.o
@@ -282,9 +277,6 @@ ifeq ($(ENABLE_VOICE_PROMPT), 1)
 endif
 ifeq ($(ENABLE_MULTIBOOT), 1)
 	CFLAGS += -DENABLE_MULTIBOOT
-endif
-ifeq ($(ENABLE_MB_DIAG), 1)
-	CFLAGS += -DENABLE_MB_DIAG
 endif
 
 

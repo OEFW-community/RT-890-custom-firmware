@@ -403,7 +403,38 @@ void MB_BootCheck(void)
 	SFLASH_SetBankBase(MB_BankBase(Bank));
 }
 
-uint8_t MB_RestoreSlot(uint8_t Slot)
+// Makes sure a config bank is initialised (copy of the active bank).
+// Uses gFlashBuffer.
+static uint8_t PrepareBank(uint8_t Bank)
+{
+	if (Bank >= MB_BANK_COUNT) {
+		return MB_ERR_SLOT;
+	}
+
+	return BankReady(Bank) ? MB_OK : CopyBank(Bank, gActiveBank);
+}
+
+uint8_t MB_SwitchBank(uint8_t Bank)
+{
+	MB_State_t State;
+	uint8_t Error;
+
+	if (MB_ReadState(&State) != MB_STATE_VALID) {
+		return MB_ERR_STATE;
+	}
+	Error = PrepareBank(Bank);
+	if (Error != MB_OK) {
+		return Error;
+	}
+	if (CommitState(State.Slot, Bank, State.ImageSize, State.ImageCrc32) != MB_OK) {
+		return MB_ERR_STATE;
+	}
+	NVIC_SystemReset();
+
+	return MB_OK;
+}
+
+uint8_t MB_RestoreSlot(uint8_t Slot, uint8_t Bank)
 {
 	// Called through a volatile pointer: the RAM code is out of BL range
 	// and must not be reached through a linker veneer.
@@ -421,13 +452,11 @@ uint8_t MB_RestoreSlot(uint8_t Slot)
 		return MB_ERR_BATTERY;
 	}
 
-	// Config bank of the slot: initialised from the active bank on first
-	// use. Done before the RAM code is loaded (both use gFlashBuffer).
-	if (!BankReady(Slot)) {
-		Error = CopyBank(Slot, gActiveBank);
-		if (Error != MB_OK) {
-			return Error;
-		}
+	// Config bank: initialised from the active bank on first use. Done
+	// before the RAM code is loaded (both use gFlashBuffer).
+	Error = PrepareBank(Bank);
+	if (Error != MB_OK) {
+		return Error;
 	}
 
 	if (!LoadRamCode()) {
@@ -438,7 +467,7 @@ uint8_t MB_RestoreSlot(uint8_t Slot)
 	// boot recognises the restored firmware. If this fails, the previous
 	// record is still the newest valid one and nothing has been erased.
 	// (CommitState does not use gFlashBuffer, which now holds the RAM code.)
-	if (CommitState(Slot, Slot, Header.ImageSize, Header.ImageCrc32) != MB_OK) {
+	if (CommitState(Slot, Bank, Header.ImageSize, Header.ImageCrc32) != MB_OK) {
 		return MB_ERR_STATE;
 	}
 

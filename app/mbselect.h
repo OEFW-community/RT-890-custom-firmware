@@ -14,14 +14,12 @@
  *     limitations under the License.
  */
 
-#ifndef APP_MBDIAG_H
-#define APP_MBDIAG_H
+#ifndef APP_MBSELECT_H
+#define APP_MBSELECT_H
 
-// Multiboot test screen (milestones M2-M3), shown when MENU is held at power on:
-// lists the firmware slots, the CRC of the running firmware and the active
-// slot, and restores a slot (keys 0 to 4, confirmed with MENU). Temporary: to be
-// replaced by the boot selector (milestone M4).
-void MBDIAG_CheckBoot(void);
+// Multiboot boot selector, shown when MENU is held at power on: lists the
+// firmware slots, loads a slot and/or selects its config bank.
+void MBSELECT_CheckBoot(void);
 
 #endif
 

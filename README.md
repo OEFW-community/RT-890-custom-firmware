@@ -78,23 +78,21 @@ make
 
 A multiboot / multiconfig feature, inspired by the one of Armel F4HWN for the UV-K1/UV-K5 V3, is being developed.
 It reuses the SPI flash area of the voice prompts (0x000000-0x2CFFFF) to store several firmware images and
-configuration banks. Implemented so far: firmware slots with validated headers, restore of a slot into the
-internal flash, active state and automatic backup of the main firmware, host tool to write slots (milestones
-M0 to M3), one configuration bank per slot (M5). Not yet: boot selector (M4).
+configuration banks: firmware slots with validated headers, boot selector, restore of a slot into the internal
+flash, automatic backup of the main firmware, one configuration bank per slot, host tool to write slots.
 
 ## Build options
 
 | Option | Default | Effect |
 |---|---|---|
 | `ENABLE_VOICE_PROMPT` | 1 | Voice prompts. Forced to 0 by `ENABLE_MULTIBOOT`. |
-| `ENABLE_MULTIBOOT` | 0 | Multiboot support. Also disables voice prompts and spectrum presets, and enables UART commands 0x54 and 0x61-0x63. |
-| `ENABLE_MB_DIAG` | 0 | Temporary multiboot test screen (requires `ENABLE_MULTIBOOT`). |
+| `ENABLE_MULTIBOOT` | 0 | Multiboot support. Also disables voice prompts, spectrum presets and NOAA (to free internal flash), and enables UART commands 0x54 and 0x61-0x63. |
 
 Run `make clean` whenever you change build options.
 
 ```
 make clean
-make ENABLE_MULTIBOOT=1 ENABLE_MB_DIAG=1
+make ENABLE_MULTIBOOT=1
 ```
 
 ## Memory map
@@ -143,8 +141,9 @@ The translation is done in a single place, the SPI flash driver: every access to
 active bank. The CPS therefore reads and writes the configuration of the running slot, without any change.
 A factory reset only affects the active bank.
 
-* Restoring slot N activates bank N. The first time, bank N is initialised by copying the active bank into it
-  (a few seconds), then a marker is written in its last sector. Afterwards it is kept as is.
+* Restoring slot N activates bank N by default (another bank can be chosen in the selector). The first time a bank
+  is used, it is initialised by copying the active bank into it (a few seconds), then a marker is written in its
+  last sector. Afterwards it is kept as is.
 * At boot, the bank recorded in the active state is used; bank 0 if there is no valid state or if that bank has
   no marker.
 * A firmware without multiboot support always uses bank 0.
@@ -155,18 +154,21 @@ A factory reset only affects the active bank.
 The state and bank logic is tested on a PC with a simulated SPI flash: `make -C tests/mb_host` (native gcc and
 zlib).
 
-## Test screen (`ENABLE_MB_DIAG`)
+## Boot selector
 
-Hold **MENU** while powering on. Each line shows a slot: number, name and CRC of its header, or `-N` with the
-header error code. The bottom line shows the CRC-32 of the running firmware (`INT`), which is also the CRC-32 of
-its 60416 byte `firmware.bin`, the active slot recorded in the state (`An`, `A-` no state, `A?` corrupt) and the
-active configuration bank (`Bn`).
+Hold **MENU** while powering on. Each line shows a slot: `*` for the active slot, its number, name and version
+(`-` for an empty or invalid slot); the bottom line shows the active configuration bank.
 
-* **0** to **4**, then **MENU** to confirm: restore that slot into the internal flash.
-* **EXIT**: continue booting.
+* **UP** / **DOWN** move the cursor (green line), **0** to **4** select a slot directly, **MENU** opens it,
+  **EXIT** continues booting.
+* The confirmation page shows the slot name and version and the configuration bank to use: by default the bank of
+  the slot (or the active bank for the active slot), **UP** / **DOWN** to choose another one. **MENU** confirms,
+  **EXIT** goes back.
+* Another slot: it is restored into the internal flash with the chosen bank.
+* The active slot with another bank: only the bank changes (no reflash), then the radio restarts.
 
 Before anything is erased, the slot is fully validated (header, image CRC, vector table, the same checks as the
-factory bootloader) and the battery level checked. Otherwise `Refused, error N` is shown and nothing is
+factory bootloader) and the battery level checked. Otherwise `Error N` is shown and nothing is
 modified. Error codes: 1 slot number, 2 no header, 3 header version, 4 not committed, 5 image size, 6 image CRC,
 7 vector table, 8 battery, 9 RAM code load, 10 read back, 11 active state write, 12 configuration bank copy.
 

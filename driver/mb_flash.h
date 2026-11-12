@@ -162,13 +162,18 @@ uint8_t MB_ReadState(MB_State_t *pState);
 // state, or if that bank is not initialised). SPI flash only.
 void MB_BootCheck(void);
 
-// Reflashes the internal application area from a slot. The slot is fully
-// validated and the battery checked before anything is erased. If config
-// bank "Slot" is not initialised yet, the active bank is copied into it. Then
-// the slot is recorded as active (with config bank = slot). On success the radio resets
-// and this function never returns; otherwise it returns an MB_ERR_* code and
-// the internal flash has not been modified.
-uint8_t MB_RestoreSlot(uint8_t Slot);
+// Reflashes the internal application area from a slot and activates a
+// config bank. The slot is fully validated and the battery checked before
+// anything is erased. If the bank is not initialised yet, the active bank is
+// copied into it. Then the slot and bank are recorded as active. On success
+// the radio resets and this function never returns; otherwise it returns an
+// MB_ERR_* code and the internal flash has not been modified.
+uint8_t MB_RestoreSlot(uint8_t Slot, uint8_t Bank);
+
+// Activates another config bank for the running firmware (no reflash): the
+// bank is initialised from the active one if needed, recorded in the state,
+// and the radio resets. Requires a valid state. Only returns on error.
+uint8_t MB_SwitchBank(uint8_t Bank);
 
 #endif
 

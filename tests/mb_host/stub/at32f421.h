@@ -6,3 +6,4 @@ typedef struct { volatile uint32_t scr, clr; } gpio_type;
 extern gpio_type GPIOA_s; 
 #define GPIOA (&GPIOA_s)
 void gpio_bits_set(gpio_type *g, uint16_t p); void gpio_bits_reset(gpio_type *g, uint16_t p);
+void NVIC_SystemReset(void);
