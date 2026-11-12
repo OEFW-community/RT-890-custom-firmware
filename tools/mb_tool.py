@@ -105,7 +105,16 @@ class Radio:
         self.retries = retries
 
     def close(self):
-        self.port.close()
+        # End of session frame (as sent by the CPS): the firmware toggles the
+        # red LED on every valid frame and only switches it off on this one.
+        # It is not acknowledged.
+        try:
+            frame = bytearray([0x35, 0, 0, 0xEE])
+            frame.append(checksum(frame))
+            self.port.write(frame)
+            self.port.flush()
+        finally:
+            self.port.close()
 
     def read_block(self, command, block):
         """Read one 128-byte block, retrying on timeout or bad checksum."""
