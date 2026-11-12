@@ -79,7 +79,8 @@ make
 A multiboot / multiconfig feature, inspired by the one of Armel F4HWN for the UV-K1/UV-K5 V3, is being developed.
 It reuses the SPI flash area of the voice prompts (0x000000-0x2CFFFF) to store several firmware images and
 configuration banks. Implemented so far: firmware slots with validated headers, restore of a slot into the
-internal flash, host tool to write slots (milestones M0 to M2). Not yet: boot selector, configuration banks.
+internal flash, active state and automatic backup of the main firmware, host tool to write slots (milestones
+M0 to M3). Not yet: boot selector, configuration banks.
 
 ## Build options
 
@@ -100,29 +101,49 @@ make ENABLE_MULTIBOOT=1 ENABLE_MB_DIAG=1
 
 | SPI flash address | Content |
 |---|---|
-| 0x000000-0x00FFFF | Slot 0 "Main": backup of the running firmware, written by the radio only |
+| 0x000000-0x00FFFF | Slot 0 "Main": copy of the firmware flashed with the usual flasher, written by the radio only |
 | 0x010000-0x04FFFF | Slots 1 to 4, written by the host |
-| 0x050000-0x2CFFFF | Reserved (multiboot state, configuration banks, future use) |
+| 0x050000 / 0x051000 | Active state, two alternating 4 KB sectors |
+| 0x052000-0x2CFFFF | Reserved (configuration banks, future use) |
 
 Each slot is 64 KB: a 4 KB header sector, then the image (at most 60416 bytes) at offset 0x1000.
 The 64 byte header (little endian) is: magic `FMB1` (u32 0x31424D46), header version (u16, 1), flags (u16, bit 0 =
 committed), image size (u32, multiple of 4), image CRC-32 (u32, zlib), name (16 bytes), version (16 bytes),
 reserved (16 bytes). The image is written first and the committed header last.
 
+## Main firmware and active state
+
+The active state records the identity (size and CRC-32) of the firmware expected in the internal flash, the
+slot it comes from and the configuration bank (24 byte record: magic `FMP3`, generation, image size, image
+CRC-32, slot, ~slot, bank, ~bank, CRC-32 of the record). A new record is written and read back in the sector that
+does not hold the newest valid one, so a power loss always leaves a valid record.
+
+At every boot, before the settings are loaded, the CRC of the running firmware is compared with the active state:
+
+* match: normal boot, nothing is written;
+* no state at all (first multiboot boot) or mismatch (firmware flashed with the usual flasher): the running
+  firmware becomes **Main**. It is copied to slot 0, verified, and recorded as active (slot 0, bank 0). The red
+  LED is lit during this copy (a few seconds, once);
+* corrupt state: nothing is written, Main is never overwritten.
+
+Restoring a slot records it as active (with configuration bank = slot) right before the internal flash is erased,
+so the restored firmware is recognised at the next boot.
+
+The state logic is tested on a PC with a simulated SPI flash: `make -C tests/mb_host` (native gcc and zlib).
+
 ## Test screen (`ENABLE_MB_DIAG`)
 
 Hold **MENU** while powering on. Each line shows a slot: number, name and CRC of its header, or `-N` with the
 header error code. The bottom line shows the CRC-32 of the running firmware (`INT`), which is also the CRC-32 of
-its 60416 byte `firmware.bin`.
+its 60416 byte `firmware.bin`, and the active slot recorded in the state (`A:n`, `A:-` no state, `A:?` corrupt).
 
-* **MENU**: copy the running firmware to slot 0 ("Main", version = git hash) and verify it.
 * **0** to **4**, then **MENU** to confirm: restore that slot into the internal flash.
 * **EXIT**: continue booting.
 
 Before anything is erased, the slot is fully validated (header, image CRC, vector table, the same checks as the
 factory bootloader) and the battery level checked. Otherwise `Refused, error N` is shown and nothing is
 modified. Error codes: 1 slot number, 2 no header, 3 header version, 4 not committed, 5 image size, 6 image CRC,
-7 vector table, 8 battery, 9 RAM code load, 10 read back.
+7 vector table, 8 battery, 9 RAM code load, 10 read back, 11 active state write.
 
 The restore routine runs from RAM with interrupts disabled. For each of the 59 sectors of 1 KB it reads the SPI
 flash, erases the sector, programs it word by word and reads it back, with up to 3 attempts; bytes past the

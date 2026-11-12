@@ -76,14 +76,45 @@ enum {
 	MB_ERR_BATTERY,		// 8: battery too low to reflash safely
 	MB_ERR_RAM_LOAD,	// 9: RAM code copy mismatch
 	MB_ERR_VERIFY,		// 10: read back mismatch after a write
+	MB_ERR_STATE,		// 11: active state could not be written
+};
+
+// Active state: identity of the firmware expected in the internal flash and
+// the slot / config bank it comes from. Stored in two alternating SPI flash
+// sectors: a new record is written and verified in the sector that does not
+// hold the newest valid one, so a power loss always leaves a usable record.
+// The record layout follows the "FMP3" record of the F4HWN multiboot.
+#define MB_STATE_A		0x00050000U
+#define MB_STATE_B		0x00051000U
+#define MB_STATE_MAGIC		0x33504D46U	// "FMP3"
+
+typedef struct {
+	uint32_t Magic;
+	uint32_t Generation;		// incremented by every new record
+	uint32_t ImageSize;		// expected internal image size
+	uint32_t ImageCrc32;		// expected CRC-32 of its ImageSize bytes
+	uint8_t Slot;			// slot the running firmware comes from
+	uint8_t SlotInv;		// ~Slot
+	uint8_t Bank;			// active config bank (milestone M5)
+	uint8_t BankInv;		// ~Bank
+	uint32_t StateCrc32;		// CRC-32 of all preceding fields
+} MB_State_t;
+
+// MB_ReadState() results. MISSING (both sectors erased) means a radio that
+// never ran a multiboot firmware: adopting the running firmware as Main is
+// safe. CORRUPT means uncertain: Main must never be overwritten then.
+enum {
+	MB_STATE_VALID = 0,
+	MB_STATE_MISSING,
+	MB_STATE_CORRUPT,
 };
 
 // CRC-32 (zlib/IEEE, reflected 0xEDB88320). Pass 0 as Crc for a new
 // computation, or a previous result to continue it.
 uint32_t MB_Crc32(uint32_t Crc, const uint8_t *pData, uint32_t Size);
 
-// CRC-32 of the whole internal application area.
-uint32_t MB_InternalCrc32(void);
+// CRC-32 of the first Size bytes of the internal application area.
+uint32_t MB_InternalCrc32(uint32_t Size);
 
 // CRC-32 of Size bytes of the SPI flash starting at Address.
 uint32_t MB_SpiCrc32(uint32_t Address, uint32_t Size);
@@ -99,15 +130,22 @@ uint8_t MB_ValidateSlot(uint8_t Slot, MB_SlotHeader_t *pHeader, uint32_t *pCrc);
 // Erases a whole slot (header and image). SPI flash only.
 uint8_t MB_EraseSlot(uint8_t Slot);
 
-// Copies the running firmware (whole application area) into slot 0, checks
-// it, then writes its committed header (name "Main", version = git hash).
+// Reads the newest valid active state record. Returns MB_STATE_*.
+uint8_t MB_ReadState(MB_State_t *pState);
+
+// Boot time check, before the settings are loaded. If the running firmware
+// is not the one recorded in the active state (it was flashed outside of the
+// multiboot, e.g. with the factory bootloader), or if there is no state yet,
+// the running firmware becomes "Main": it is copied to slot 0 and recorded as
+// active (slot 0, bank 0). Nothing is written when the state is corrupt.
 // SPI flash only.
-uint8_t MB_BackupInternalToSlot0(void);
+void MB_BootCheck(void);
 
 // Reflashes the internal application area from a slot. The slot is fully
-// validated and the battery checked before anything is erased. On success the
-// radio resets and this function never returns; otherwise it returns an
-// MB_ERR_* code and nothing has been modified.
+// validated and the battery checked before anything is erased, then the slot
+// is recorded as active (with config bank = slot). On success the radio resets
+// and this function never returns; otherwise it returns an MB_ERR_* code and
+// the internal flash has not been modified.
 uint8_t MB_RestoreSlot(uint8_t Slot);
 
 #endif

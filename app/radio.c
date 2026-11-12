@@ -21,6 +21,9 @@
 #ifdef ENABLE_MB_DIAG
 	#include "app/mbdiag.h"
 #endif
+#ifdef ENABLE_MULTIBOOT
+	#include "driver/mb_flash.h"
+#endif
 #include "app/radio.h"
 #include "driver/beep.h"
 #include "driver/bk4819.h"
@@ -224,6 +227,9 @@ void RADIO_Init(void)
 	}
 
 	SETTINGS_LoadCalibration();
+#ifdef ENABLE_MULTIBOOT
+	MB_BootCheck();
+#endif
 	SETTINGS_LoadSettings();
 #ifdef ENABLE_MB_DIAG
 	MBDIAG_CheckBoot();

@@ -1,0 +1,2 @@
+#define BOARD_GPIOA_LED_RED 1
+#define BOARD_GPIOA_LED_GREEN 2

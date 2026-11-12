@@ -17,9 +17,9 @@
 #ifndef APP_MBDIAG_H
 #define APP_MBDIAG_H
 
-// Multiboot test screen (milestone M2), shown when MENU is held at power on:
-// lists the firmware slots, backs up the running firmware to slot 0 (MENU)
-// and restores a slot (keys 0 to 4, confirmed with MENU). Temporary: to be
+// Multiboot test screen (milestones M2-M3), shown when MENU is held at power on:
+// lists the firmware slots, the CRC of the running firmware and the active
+// slot, and restores a slot (keys 0 to 4, confirmed with MENU). Temporary: to be
 // replaced by the boot selector (milestone M4).
 void MBDIAG_CheckBoot(void);
 

@@ -22,6 +22,7 @@
 #include <at32f421.h>
 #include "driver/battery.h"
 #include "driver/mb_flash.h"
+#include "driver/pins.h"
 #include "driver/serial-flash.h"
 #include "misc.h"
 #include "radio/hardware.h"
@@ -34,6 +35,7 @@ extern uint8_t __mb_ramfunc_start[];
 extern uint8_t __mb_ramfunc_end[];
 
 _Static_assert(sizeof(MB_SlotHeader_t) == 64, "slot header must be 64 bytes");
+_Static_assert(sizeof(MB_State_t) == 24, "state record must be 24 bytes");
 
 uint32_t MB_Crc32(uint32_t Crc, const uint8_t *pData, uint32_t Size)
 {
@@ -50,9 +52,9 @@ uint32_t MB_Crc32(uint32_t Crc, const uint8_t *pData, uint32_t Size)
 	return ~Crc;
 }
 
-uint32_t MB_InternalCrc32(void)
+uint32_t MB_InternalCrc32(uint32_t Size)
 {
-	return MB_Crc32(0, (const uint8_t *)MB_INT_APP_BASE, MB_INT_APP_SIZE);
+	return MB_Crc32(0, (const uint8_t *)MB_INT_APP_BASE, Size);
 }
 
 uint32_t MB_SpiCrc32(uint32_t Address, uint32_t Size)
@@ -165,10 +167,11 @@ uint8_t MB_EraseSlot(uint8_t Slot)
 	return MB_OK;
 }
 
-uint8_t MB_BackupInternalToSlot0(void)
+// Copies the running firmware (whole application area) into slot 0, checks
+// it, then writes its committed header (name "Main", version = git hash).
+static uint8_t BackupInternalToSlot0(uint32_t Crc)
 {
 	MB_SlotHeader_t Header;
-	uint32_t Crc;
 	uint8_t i;
 
 	MB_EraseSlot(0);
@@ -177,7 +180,6 @@ uint8_t MB_BackupInternalToSlot0(void)
 	SFLASH_Write((const void *)MB_INT_APP_BASE, MB_SLOT_IMAGE(0), MB_INT_APP_SIZE);
 	HARDWARE_EnableInterrupts(true);
 
-	Crc = MB_InternalCrc32();
 	if (MB_SpiCrc32(MB_SLOT_IMAGE(0), MB_INT_APP_SIZE) != Crc) {
 		return MB_ERR_VERIFY;
 	}
@@ -205,6 +207,128 @@ uint8_t MB_BackupInternalToSlot0(void)
 	return MB_ValidateSlot(0, &Header, NULL) == MB_OK ? MB_OK : MB_ERR_VERIFY;
 }
 
+static uint32_t StateCrc(const MB_State_t *pState)
+{
+	return MB_Crc32(0, (const uint8_t *)pState, offsetof(MB_State_t, StateCrc32));
+}
+
+static uint8_t ReadStateCopy(uint32_t Address, MB_State_t *pState)
+{
+	uint8_t i;
+
+	SFLASH_Read(pState, Address, sizeof(*pState));
+	for (i = 0; i < sizeof(*pState) && ((const uint8_t *)pState)[i] == 0xFF; i++) {
+	}
+	if (i == sizeof(*pState)) {
+		return MB_STATE_MISSING;
+	}
+	if (pState->Magic != MB_STATE_MAGIC ||
+		pState->StateCrc32 != StateCrc(pState) ||
+		(uint8_t)~pState->Slot != pState->SlotInv ||
+		(uint8_t)~pState->Bank != pState->BankInv ||
+		pState->Slot >= MB_SLOT_COUNT ||
+		pState->ImageSize > MB_INT_APP_SIZE) {
+		return MB_STATE_CORRUPT;
+	}
+
+	return MB_STATE_VALID;
+}
+
+// Returns MB_STATE_*, the newest valid record and the address of the sector
+// to use for the next record.
+static uint8_t ReadState(MB_State_t *pState, uint32_t *pNext)
+{
+	MB_State_t B;
+	uint8_t StatusA;
+	uint8_t StatusB;
+
+	StatusA = ReadStateCopy(MB_STATE_A, pState);
+	StatusB = ReadStateCopy(MB_STATE_B, &B);
+	if (StatusB == MB_STATE_VALID && (StatusA != MB_STATE_VALID || (int32_t)(B.Generation - pState->Generation) > 0)) {
+		*pState = B;
+		*pNext = MB_STATE_A;
+		return MB_STATE_VALID;
+	}
+	*pNext = (StatusA == MB_STATE_VALID) ? MB_STATE_B : MB_STATE_A;
+	if (StatusA == MB_STATE_VALID) {
+		return MB_STATE_VALID;
+	}
+
+	return (StatusA == MB_STATE_MISSING && StatusB == MB_STATE_MISSING) ? MB_STATE_MISSING : MB_STATE_CORRUPT;
+}
+
+uint8_t MB_ReadState(MB_State_t *pState)
+{
+	uint32_t Next;
+
+	return ReadState(pState, &Next);
+}
+
+// Writes a new active state record in the sector that does not hold the
+// newest valid one and reads it back. The previous record stays intact.
+static uint8_t CommitState(uint8_t Slot, uint8_t Bank, uint32_t ImageSize, uint32_t ImageCrc32)
+{
+	MB_State_t State;
+	MB_State_t Check;
+	uint32_t Next;
+	uint32_t Generation;
+
+	Generation = (ReadState(&State, &Next) == MB_STATE_VALID) ? State.Generation + 1 : 1;
+	State.Magic = MB_STATE_MAGIC;
+	State.Generation = Generation;
+	State.ImageSize = ImageSize;
+	State.ImageCrc32 = ImageCrc32;
+	State.Slot = Slot;
+	State.SlotInv = ~Slot;
+	State.Bank = Bank;
+	State.BankInv = ~Bank;
+	State.StateCrc32 = StateCrc(&State);
+
+	HARDWARE_EnableInterrupts(false);
+	SFLASH_Erase(Next >> 12);
+	SFLASH_Write(&State, Next, sizeof(State));
+	HARDWARE_EnableInterrupts(true);
+
+	if (ReadStateCopy(Next, &Check) != MB_STATE_VALID || Check.Generation != Generation) {
+		return MB_ERR_STATE;
+	}
+
+	return MB_OK;
+}
+
+void MB_BootCheck(void)
+{
+	MB_State_t State;
+	uint32_t Crc;
+
+	switch (MB_ReadState(&State)) {
+	case MB_STATE_VALID:
+		if (MB_InternalCrc32(State.ImageSize) == State.ImageCrc32) {
+			// Expected firmware: normal boot.
+			return;
+		}
+		// Flashed outside of the multiboot: this is the new Main.
+		break;
+
+	case MB_STATE_MISSING:
+		// First multiboot boot: adopt the running firmware as Main.
+		break;
+
+	default:
+		// Uncertain: never overwrite Main.
+		return;
+	}
+
+	// Red LED while the SPI flash is written (a few seconds, once).
+	gpio_bits_set(GPIOA, BOARD_GPIOA_LED_RED);
+	Crc = MB_InternalCrc32(MB_INT_APP_SIZE);
+	if (BackupInternalToSlot0(Crc) == MB_OK) {
+		// A failure leaves the state unchanged: retried at next boot.
+		CommitState(0, 0, MB_INT_APP_SIZE, Crc);
+	}
+	gpio_bits_reset(GPIOA, BOARD_GPIOA_LED_RED);
+}
+
 uint8_t MB_RestoreSlot(uint8_t Slot)
 {
 	// Called through a volatile pointer: the RAM code is out of BL range
@@ -226,6 +350,15 @@ uint8_t MB_RestoreSlot(uint8_t Slot)
 	if (!LoadRamCode()) {
 		return MB_ERR_RAM_LOAD;
 	}
+
+	// Last step before erasing: record the slot as active, so that the next
+	// boot recognises the restored firmware. If this fails, the previous
+	// record is still the newest valid one and nothing has been erased.
+	// (CommitState does not use gFlashBuffer, which now holds the RAM code.)
+	if (CommitState(Slot, Slot, Header.ImageSize, Header.ImageCrc32) != MB_OK) {
+		return MB_ERR_STATE;
+	}
+
 	pRestoreFn(MB_SLOT_IMAGE(Slot), Header.ImageSize, (uint32_t *)(gFlashBuffer + MB_RAM_BUFFER_OFFSET));
 
 	// Not reached: the RAM routine always resets the MCU.

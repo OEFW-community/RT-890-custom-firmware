@@ -72,6 +72,7 @@ static void DrawMessage(const char *pString, uint8_t Error)
 static void DrawSlots(void)
 {
 	MB_SlotHeader_t Header;
+	MB_State_t State;
 	uint8_t Slot;
 	uint8_t Error;
 	uint8_t i;
@@ -94,13 +95,28 @@ static void DrawSlots(void)
 		}
 		UI_DrawString(0, 96 - (Slot * 16), gString, 19);
 	}
+	// Running firmware CRC and active slot recorded in the state
+	// ('-' no state, '?' corrupt state).
 	gString[0] = 'I';
 	gString[1] = 'N';
 	gString[2] = 'T';
 	gString[3] = ' ';
-	ToHex(gString + 4, MB_InternalCrc32());
-	UI_DrawString(0, 16, gString, 12);
-	UI_DrawString(112, 16, "M:Bkp", 5);
+	ToHex(gString + 4, MB_InternalCrc32(MB_INT_APP_SIZE));
+	gString[12] = ' ';
+	gString[13] = 'A';
+	gString[14] = ':';
+	switch (MB_ReadState(&State)) {
+	case MB_STATE_VALID:
+		gString[15] = '0' + State.Slot;
+		break;
+	case MB_STATE_MISSING:
+		gString[15] = '-';
+		break;
+	default:
+		gString[15] = '?';
+		break;
+	}
+	UI_DrawString(0, 16, gString, 16);
 }
 
 static void RestoreSlot(uint8_t Slot)
@@ -139,7 +155,6 @@ static void RestoreSlot(uint8_t Slot)
 void MBDIAG_CheckBoot(void)
 {
 	KEY_t Key;
-	uint8_t Error;
 
 	if (KEY_GetButton() != KEY_MENU) {
 		return;
@@ -153,19 +168,12 @@ void MBDIAG_CheckBoot(void)
 		DrawSlots();
 		do {
 			Key = KEY_GetButton();
-		} while (Key != KEY_EXIT && Key != KEY_MENU && Key > KEY_4);
+		} while (Key != KEY_EXIT && Key > KEY_4);
 		WaitKey(KEY_NONE);
 		if (Key == KEY_EXIT) {
 			break;
 		}
-		if (Key == KEY_MENU) {
-			ClearScreen();
-			UI_DrawString(0, 80, "Backup to slot 0", 16);
-			Error = MB_BackupInternalToSlot0();
-			DrawMessage(Error == MB_OK ? "Backup OK" : "Backup failed", Error);
-		} else {
-			RestoreSlot(Key);
-		}
+		RestoreSlot(Key);
 	}
 	KEY_KeyCounter = 0;
 
