@@ -268,6 +268,18 @@ static uint8_t CopyBank(uint8_t Dst, uint8_t Src)
 	return BankReady(Dst) ? MB_OK : MB_ERR_BANK;
 }
 
+uint8_t MB_ResetBank(uint8_t Bank)
+{
+	if (Bank == 0 || Bank >= MB_BANK_COUNT || Bank == gActiveBank) {
+		return MB_ERR_SLOT;
+	}
+	HARDWARE_EnableInterrupts(false);
+	SFLASH_Erase((MB_BankBase(Bank) + MB_BANK_MARKER) >> 12);
+	HARDWARE_EnableInterrupts(true);
+
+	return BankReady(Bank) ? MB_ERR_VERIFY : MB_OK;
+}
+
 static uint32_t StateCrc(const MB_State_t *pState)
 {
 	return MB_Crc32(0, (const uint8_t *)pState, offsetof(MB_State_t, StateCrc32));

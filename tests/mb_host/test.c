@@ -143,5 +143,12 @@ int main(void){
    MB_BootCheck(); CHECK(MB_ActiveBank()==0);
    spi[MB_STATE_A+8]^=1; spi[MB_STATE_B+8]^=1; CHECK(MB_SwitchBank(1)==MB_ERR_STATE);     // needs a valid state
  }
+ // 12. bank reset
+ { spi[MB_STATE_A+8]^=1; spi[MB_STATE_B+8]^=1;   // undo the corruption of step 11
+   MB_BootCheck(); uint8_t act=MB_ActiveBank();
+   CHECK(MB_ResetBank(0)==MB_ERR_SLOT && MB_ResetBank(5)==MB_ERR_SLOT && MB_ResetBank(act)==MB_ERR_SLOT);
+   CHECK(MB_ResetBank(3)==MB_OK); restored=-1; CHECK(setjmp(jb)==0 ? MB_RestoreSlot(2,3) : 1);
+   CHECK(!memcmp(spi+0xA0000,spi+MB_BankBase(act),SFLASH_BANK_SIZE));   // copied again from the active bank
+ }
  printf("all host tests passed\n");
  return 0;}

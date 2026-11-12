@@ -150,6 +150,10 @@ uint32_t MB_BankBase(uint8_t Bank);
 // Config bank selected at boot by MB_BootCheck().
 uint8_t MB_ActiveBank(void);
 
+// Forgets a config bank (1 to 4, not the active one) by erasing its marker:
+// it is initialised again from the active bank on its next use.
+uint8_t MB_ResetBank(uint8_t Bank);
+
 // Reads the newest valid active state record. Returns MB_STATE_*.
 uint8_t MB_ReadState(MB_State_t *pState);
 
