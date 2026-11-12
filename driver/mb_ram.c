@@ -30,7 +30,23 @@
 
 #define MB_FLASH_KEY1	0x45670123U
 #define MB_FLASH_KEY2	0xCDEF89ABU
+
+// FLASH->ctrl
+#define MB_FLASH_FPRGM	(1U << 0)
+#define MB_FLASH_SECERS	(1U << 1)
+#define MB_FLASH_ERSTR	(1U << 6)
 #define MB_FLASH_OPLK	(1U << 7)
+// FLASH->sts (error and done flags are cleared by writing 1)
+#define MB_FLASH_OBF	(1U << 0)
+#define MB_FLASH_PRGMERR	(1U << 2)
+#define MB_FLASH_EPPERR	(1U << 4)
+#define MB_FLASH_ODF	(1U << 5)
+#define MB_FLASH_FLAGS	(MB_FLASH_PRGMERR | MB_FLASH_EPPERR | MB_FLASH_ODF)
+
+// Busy wait bound, far above the duration of a 1 KB sector erase.
+#define MB_FLASH_TIMEOUT	0x01000000U
+#define MB_SECTOR_RETRIES	3U
+#define MB_SECTOR_WORDS		(MB_INT_SECTOR_SIZE / 4U)
 
 // SPI flash pins (bit-banged). The board names are from the flash point of
 // view inverted: SF_MISO (PB3) is the MCU output, SF_MOSI (PA7) the input.
@@ -80,6 +96,125 @@ MB_RAM static void SpiRead(uint32_t Address, uint8_t *pBuffer, uint32_t Size)
 		pBuffer[i] = SpiTransfer(0xFF);
 	}
 	GPIOB->scr = MB_SF_CS;
+}
+
+// Waits for the end of a flash operation. Returns false on timeout or on a
+// programming / protection error. Clears the status flags.
+MB_RAM static bool FlashWait(void)
+{
+	uint32_t Timeout = MB_FLASH_TIMEOUT;
+	uint32_t Status;
+
+	while (FLASH->sts & MB_FLASH_OBF) {
+		if (--Timeout == 0) {
+			return false;
+		}
+	}
+	Status = FLASH->sts;
+	FLASH->sts = MB_FLASH_FLAGS;
+
+	return !(Status & (MB_FLASH_PRGMERR | MB_FLASH_EPPERR));
+}
+
+MB_RAM static bool FlashEraseSector(uint32_t Address)
+{
+	bool bOk;
+
+	FLASH->ctrl |= MB_FLASH_SECERS;
+	FLASH->addr = Address;
+	FLASH->ctrl |= MB_FLASH_ERSTR;
+	bOk = FlashWait();
+	FLASH->ctrl &= ~MB_FLASH_SECERS;
+
+	return bOk;
+}
+
+MB_RAM static bool FlashProgramWord(uint32_t Address, uint32_t Data)
+{
+	bool bOk;
+
+	FLASH->ctrl |= MB_FLASH_FPRGM;
+	*(volatile uint32_t *)Address = Data;
+	bOk = FlashWait();
+	FLASH->ctrl &= ~MB_FLASH_FPRGM;
+
+	return bOk;
+}
+
+MB_RAM __attribute__((noreturn)) static void SystemReset(void)
+{
+	__DSB();
+	SCB->AIRCR = (0x5FAUL << SCB_AIRCR_VECTKEY_Pos) | SCB_AIRCR_SYSRESETREQ_Msk;
+	__DSB();
+	while (1) {
+	}
+}
+
+// Erases, programs and verifies one 1 KB sector. Never touches anything
+// outside of the application area.
+MB_RAM static bool WriteSector(uint32_t Address, const uint32_t *pData)
+{
+	volatile const uint32_t *pFlash = (volatile const uint32_t *)Address;
+	uint32_t i;
+
+	if (Address < MB_INT_APP_BASE || Address > MB_INT_APP_BASE + MB_INT_APP_SIZE - MB_INT_SECTOR_SIZE) {
+		return false;
+	}
+	if (!FlashEraseSector(Address)) {
+		return false;
+	}
+	for (i = 0; i < MB_SECTOR_WORDS; i++) {
+		// Erased words read as 0xFFFFFFFF: nothing to program.
+		if (pData[i] != 0xFFFFFFFFU && !FlashProgramWord(Address + (i * 4U), pData[i])) {
+			return false;
+		}
+	}
+	for (i = 0; i < MB_SECTOR_WORDS; i++) {
+		if (pFlash[i] != pData[i]) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+MB_RAM void MB_RamRestore(uint32_t SpiAddress, uint32_t *pBuffer)
+{
+	uint32_t Offset;
+	uint32_t Retry;
+
+	__disable_irq();
+
+	if (FLASH->ctrl & MB_FLASH_OPLK) {
+		FLASH->unlock = MB_FLASH_KEY1;
+		FLASH->unlock = MB_FLASH_KEY2;
+	}
+	FLASH->sts = MB_FLASH_FLAGS;
+
+	for (Offset = 0; Offset < MB_INT_APP_SIZE; Offset += MB_INT_SECTOR_SIZE) {
+		SpiRead(SpiAddress + Offset, (uint8_t *)pBuffer, MB_INT_SECTOR_SIZE);
+		for (Retry = 0; Retry < MB_SECTOR_RETRIES; Retry++) {
+			if (WriteSector(MB_INT_APP_BASE + Offset, pBuffer)) {
+				break;
+			}
+		}
+		if (Retry == MB_SECTOR_RETRIES) {
+			// Returning to flash-resident code is impossible once the
+			// application has been erased: reset. The factory bootloader
+			// (side keys 1 + 2 at power on) is the recovery path.
+			break;
+		}
+		// Progress: toggle the green LED once per sector.
+		if (GPIOA->odt & BOARD_GPIOA_LED_GREEN) {
+			GPIOA->clr = BOARD_GPIOA_LED_GREEN;
+		} else {
+			GPIOA->scr = BOARD_GPIOA_LED_GREEN;
+		}
+	}
+
+	FLASH->ctrl &= ~(MB_FLASH_FPRGM | MB_FLASH_SECERS);
+	FLASH->ctrl |= MB_FLASH_OPLK;
+	SystemReset();
 }
 
 MB_RAM void MB_RamProbe(MB_Probe_t *pProbe, uint32_t SpiAddress)

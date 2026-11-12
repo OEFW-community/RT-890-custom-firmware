@@ -96,7 +96,38 @@ static void DrawProbePage(void)
 	}
 	DrawHexLine(32, "INT", MB_InternalCrc32(), 8);
 	DrawHexLine(16, "SL0", MB_SpiCrc32(MB_SLOT_BASE(0) + MB_SLOT_IMG_OFFSET, MB_INT_APP_SIZE), 8);
-	UI_DrawString(0, 0, "1:Backup EXIT:Go", 16);
+	UI_DrawString(0, 0, "1:Bkp 2:Rst EXIT", 16);
+}
+
+// Milestone M1b: reflash the internal flash from slot 0, after confirmation.
+static void RestorePage(void)
+{
+	uint8_t Error;
+	KEY_t Key;
+
+	ClearScreen();
+	UI_DrawString(0, 80, "Restore slot 0?", 15);
+	UI_DrawString(0, 48, "MENU: yes", 9);
+	UI_DrawString(0, 32, "EXIT: no", 8);
+	do {
+		Key = KEY_GetButton();
+	} while (Key != KEY_MENU && Key != KEY_EXIT);
+	WaitKey(KEY_NONE);
+	if (Key != KEY_MENU) {
+		return;
+	}
+
+	ClearScreen();
+	UI_DrawString(0, 80, "Restoring...", 12);
+	UI_DrawString(0, 64, "Do not power off", 16);
+	// Only returns if the image was refused: nothing has been modified.
+	Error = MB_RestoreSlot0();
+	ClearScreen();
+	UI_DrawString(0, 80, "Refused, error", 14);
+	gString[0] = '0' + Error;
+	UI_DrawString(120, 80, gString, 1);
+	UI_DrawString(0, 0, "EXIT: next", 10);
+	WaitKey(KEY_EXIT);
 }
 
 void MBDIAG_CheckBoot(void)
@@ -147,6 +178,11 @@ void MBDIAG_CheckBoot(void)
 			DrawResult(64, "BKP ", MB_BackupInternalToSlot0());
 			UI_DrawString(0, 0, "EXIT: next", 10);
 			WaitKey(KEY_EXIT);
+			DrawProbePage();
+		}
+		if (Key == KEY_2) {
+			WaitKey(KEY_NONE);
+			RestorePage();
 			DrawProbePage();
 		}
 	}

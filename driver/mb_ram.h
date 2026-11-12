@@ -43,5 +43,14 @@ typedef struct {
 // Must only be called through MB_RunProbe() (driver/mb_flash.c).
 void MB_RamProbe(MB_Probe_t *pProbe, uint32_t SpiAddress);
 
+// Rewrites the whole internal application area (59 sectors of 1 KB from
+// 0x08001400) with the image stored in the SPI flash at SpiAddress, then
+// resets the MCU. pBuffer is a 1 KB, word aligned RAM buffer. Interrupts are
+// disabled and the routine never returns: on an unrecoverable sector error it
+// relocks the flash controller and resets immediately. The caller must have
+// validated the image beforehand. Must only be called through
+// MB_RestoreSlot0() (driver/mb_flash.c).
+void MB_RamRestore(uint32_t SpiAddress, uint32_t *pBuffer) __attribute__((noreturn));
+
 #endif
 

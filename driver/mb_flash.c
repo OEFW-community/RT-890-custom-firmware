@@ -19,9 +19,12 @@
  */
 
 #include <at32f421.h>
+#include "driver/battery.h"
 #include "driver/mb_flash.h"
 #include "driver/serial-flash.h"
+#include "misc.h"
 #include "radio/hardware.h"
+#include "radio/settings.h"
 
 // Linker symbols (firmware.ld): load image in flash and execution range,
 // which aliases gFlashBuffer.
@@ -129,3 +132,37 @@ bool MB_BackupInternalToSlot0(void)
 	return true;
 }
 
+uint8_t MB_RestoreSlot0(void)
+{
+	void (*volatile pRestoreFn)(uint32_t, uint32_t *) = MB_RamRestore;
+	const uint32_t Image = MB_SLOT_BASE(0) + MB_SLOT_IMG_OFFSET;
+	uint32_t Vectors[2];
+
+	if (MB_SpiCrc32(Image, MB_INT_APP_SIZE) != MB_InternalCrc32()) {
+		return MB_ERR_CRC;
+	}
+
+	// Same checks as the factory bootloader before it jumps to the
+	// application, plus a reset vector inside the application area.
+	SFLASH_Read(Vectors, Image, sizeof(Vectors));
+	if (Vectors[0] - 0x20000000U >= 0x4000U ||
+		!(Vectors[1] & 1U) ||
+		Vectors[1] < MB_INT_APP_BASE ||
+		Vectors[1] >= MB_INT_APP_BASE + MB_INT_APP_SIZE) {
+		return MB_ERR_IMAGE;
+	}
+
+	gBatteryVoltage = BATTERY_GetVoltage();
+	if (gBatteryVoltage <= gCalibration.BatteryCalibration[2]) {
+		return MB_ERR_BATTERY;
+	}
+
+	if (!MB_LoadRamCode()) {
+		return MB_ERR_RAM_LOAD;
+	}
+	pRestoreFn(Image, (uint32_t *)(gFlashBuffer + MB_RAM_BUFFER_OFFSET));
+
+	// Not reached: the RAM routine always resets the MCU.
+	while (1) {
+	}
+}

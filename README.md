@@ -78,8 +78,9 @@ make
 
 A multiboot / multiconfig feature, inspired by the one of Armel F4HWN for the UV-K1/UV-K5 V3, is being developed.
 It reuses the SPI flash area of the voice prompts (0x000000-0x2CFFFF) to store several firmware images and
-configuration banks. It is **not functional yet**: only milestones M0 (read-only diagnostics) and M1a
-(self test of the restore building blocks, backup of the running firmware to SPI slot 0) are implemented.
+configuration banks. It is **not functional yet**: only milestones M0 (read-only diagnostics), M1a
+(self test of the restore building blocks, backup of the running firmware to SPI slot 0) and M1b (reflash of
+the internal flash from slot 0, identical image only) are implemented.
 
 ## Build options
 
@@ -135,6 +136,22 @@ self test that never erases nor programs the internal flash:
 
 Key **1** copies the running firmware to SPI slot 0 and verifies it (`BKP`); afterwards `SL0` must equal `INT`.
 This writes the SPI flash only (0x000000-0x00FFFF, former voice prompts). **EXIT** continues booting.
+
+## M1b: reflash from slot 0 (test of the restore routine)
+
+Key **2** on the second page, confirmed with **MENU**, reflashes the internal application area from slot 0.
+For this milestone the slot image must be identical to the running firmware (same CRC-32): run the backup
+(key **1**) first. Before anything is erased the firmware also checks the vector table of the image (same
+checks as the factory bootloader) and the battery level; if a check fails, `Refused, error N` is shown and
+nothing is modified (1: CRC, 2: vector table, 3: battery, 4: RAM code load).
+
+The routine runs from RAM with interrupts disabled. For each of the 59 sectors of 1 KB it reads the SPI flash,
+erases the sector, programs it word by word and reads it back, with up to 3 attempts. The green LED toggles
+after each sector, then the radio resets. Addresses below 0x08001400 (factory bootloader) are refused by the
+routine itself.
+
+If the radio does not restart correctly, power it on while holding **side keys 1 and 2** to enter the factory
+bootloader and flash a firmware with the usual flasher.
 
 The RAM-resident code (`driver/mb_ram.c`, section `.mb_ramfunc`) is checked after every multiboot link by
 `tools/check_mb_ramfunc.py`: all its branches must stay inside the section and its object must not contain any

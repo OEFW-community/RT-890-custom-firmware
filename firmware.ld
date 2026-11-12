@@ -101,8 +101,10 @@ SECTIONS
 
 	ASSERT(__mb_ramfunc_size == 0 || ADDR(.mb_ramfunc) == ADDR(.flashbuf),
 		"Multiboot RAM code and gFlashBuffer do not share the same address")
-	ASSERT(__mb_ramfunc_size + 0x400 <= SIZEOF(.flashbuf) || __mb_ramfunc_size == 0,
-		"Multiboot RAM code plus its 1 KB sector buffer do not fit in gFlashBuffer")
+	/* The 1 KB sector buffer of the restore routine is at gFlashBuffer + 4 KB
+	   (MB_RAM_BUFFER_OFFSET in driver/mb_flash.h). */
+	ASSERT(__mb_ramfunc_size <= 0x1000 && (__mb_ramfunc_size == 0 || SIZEOF(.flashbuf) >= 0x1400),
+		"Multiboot RAM code or its 1 KB sector buffer do not fit in gFlashBuffer")
 
 	/* Check that there is enough RAM */
 	._user_heap_stack :

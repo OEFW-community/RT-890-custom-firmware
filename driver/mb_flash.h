@@ -34,6 +34,18 @@
 #define MB_SLOT_COUNT		5U
 #define MB_SLOT_BASE(Slot)	((uint32_t)(Slot) * MB_SLOT_STRIDE)
 
+// Offset of the 1 KB sector buffer of the restore routine in gFlashBuffer,
+// after the RAM-resident code (checked by firmware.ld).
+#define MB_RAM_BUFFER_OFFSET	0x1000U
+
+enum {
+	MB_OK = 0,
+	MB_ERR_CRC,		// slot image CRC mismatch
+	MB_ERR_IMAGE,		// implausible vector table
+	MB_ERR_BATTERY,		// battery too low to reflash safely
+	MB_ERR_RAM_LOAD,	// RAM code copy mismatch
+};
+
 // CRC-32 (zlib/IEEE, reflected 0xEDB88320). Pass 0 as Crc for a new
 // computation, or a previous result to continue it.
 uint32_t MB_Crc32(uint32_t Crc, const uint8_t *pData, uint32_t Size);
@@ -56,6 +68,14 @@ bool MB_RunProbe(MB_Probe_t *pProbe, uint32_t SpiAddress);
 // of slot 0 and verifies it. Writes the SPI flash only. M1a: no slot header
 // yet (milestone M2).
 bool MB_BackupInternalToSlot0(void);
+
+// Milestone M1b: reflashes the internal application area from SPI slot 0.
+// Before anything is erased, the slot image must have the CRC of the running
+// firmware (M1b only restores an identical image), a plausible vector table,
+// and the battery must be above the "please charge" level. On success the
+// radio resets and this function never returns; otherwise it returns an
+// MB_ERR_* code and nothing has been modified.
+uint8_t MB_RestoreSlot0(void);
 
 #endif
 
