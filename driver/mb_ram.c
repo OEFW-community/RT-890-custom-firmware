@@ -178,12 +178,59 @@ MB_RAM static bool WriteSector(uint32_t Address, const uint32_t *pData)
 	return true;
 }
 
-MB_RAM void MB_RamRestore(uint32_t SpiAddress, uint32_t ImageSize, uint32_t *pBuffer)
+// CRC-32 (zlib) update, without the initial and final inversions.
+MB_RAM static uint32_t Crc32Update(uint32_t Crc, const volatile uint8_t *pData, uint32_t Size)
+{
+	uint32_t i;
+
+	while (Size--) {
+		Crc ^= *pData++;
+		for (i = 0; i < 8; i++) {
+			Crc = (Crc >> 1) ^ (0xEDB88320U & -(Crc & 1U));
+		}
+	}
+
+	return Crc;
+}
+
+// Fills pBuffer with the image bytes of the sector at Offset. Only image
+// bytes are read; the rest of the area stays erased (0xFF), never filled with
+// leftovers of the slot.
+MB_RAM static void LoadSector(uint32_t SpiAddress, uint32_t Offset, uint32_t ImageSize, uint32_t *pBuffer)
+{
+	uint32_t Size = 0;
+	uint32_t i;
+
+	for (i = 0; i < MB_SECTOR_WORDS; i++) {
+		((volatile uint32_t *)pBuffer)[i] = 0xFFFFFFFFU;
+	}
+	if (Offset < ImageSize) {
+		Size = ImageSize - Offset;
+		if (Size > MB_INT_SECTOR_SIZE) {
+			Size = MB_INT_SECTOR_SIZE;
+		}
+	}
+	SpiRead(SpiAddress + Offset, (uint8_t *)pBuffer, Size);
+}
+
+MB_RAM static bool ProgramSector(uint32_t Address, const uint32_t *pData)
+{
+	uint32_t Retry;
+
+	for (Retry = 0; Retry < MB_SECTOR_RETRIES; Retry++) {
+		if (WriteSector(Address, pData)) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+MB_RAM void MB_RamRestore(uint32_t SpiAddress, uint32_t ImageSize, uint32_t ImageCrc32, uint32_t *pBuffer)
 {
 	uint32_t Offset;
+	uint32_t Crc;
 	uint32_t Retry;
-	uint32_t Size;
-	uint32_t i;
 
 	__disable_irq();
 
@@ -193,30 +240,24 @@ MB_RAM void MB_RamRestore(uint32_t SpiAddress, uint32_t ImageSize, uint32_t *pBu
 	}
 	FLASH->sts = MB_FLASH_FLAGS;
 
-	for (Offset = 0; Offset < MB_INT_APP_SIZE; Offset += MB_INT_SECTOR_SIZE) {
-		// Only CRC-validated image bytes are read; the rest of the area is
-		// erased (0xFF), never filled with leftovers of the slot.
-		for (i = 0; i < MB_SECTOR_WORDS; i++) {
-			((volatile uint32_t *)pBuffer)[i] = 0xFFFFFFFFU;
-		}
-		Size = 0;
-		if (Offset < ImageSize) {
-			Size = ImageSize - Offset;
-			if (Size > MB_INT_SECTOR_SIZE) {
-				Size = MB_INT_SECTOR_SIZE;
-			}
-		}
-		SpiRead(SpiAddress + Offset, (uint8_t *)pBuffer, Size);
-		for (Retry = 0; Retry < MB_SECTOR_RETRIES; Retry++) {
-			if (WriteSector(MB_INT_APP_BASE + Offset, pBuffer)) {
-				break;
-			}
-		}
-		if (Retry == MB_SECTOR_RETRIES) {
-			// Returning to flash-resident code is impossible once the
-			// application has been erased: reset. The factory bootloader
-			// (side keys 1 + 2 at power on) is the recovery path.
-			break;
+	// 1. The first sector (vector table) is erased first and programmed
+	// last: until the whole image has been written and checked, the initial
+	// stack pointer reads 0xFFFFFFFF and the factory bootloader never jumps
+	// to a partial image. An interrupted or failed restore therefore leaves a
+	// radio that only starts in bootloader mode (side keys 1 + 2), and a
+	// partial image can never run and be mistaken for a new Main.
+	for (Retry = 0; Retry < MB_SECTOR_RETRIES && !FlashEraseSector(MB_INT_APP_BASE); Retry++) {
+	}
+	if (Retry == MB_SECTOR_RETRIES) {
+		goto Done;
+	}
+
+	// 2. All the other sectors.
+	for (Offset = MB_INT_SECTOR_SIZE; Offset < MB_INT_APP_SIZE; Offset += MB_INT_SECTOR_SIZE) {
+		LoadSector(SpiAddress, Offset, ImageSize, pBuffer);
+		if (!ProgramSector(MB_INT_APP_BASE + Offset, pBuffer)) {
+			// Returning to flash-resident code is impossible: reset.
+			goto Done;
 		}
 		// Progress: toggle the green LED once per sector.
 		if (GPIOA->odt & BOARD_GPIOA_LED_GREEN) {
@@ -226,6 +267,23 @@ MB_RAM void MB_RamRestore(uint32_t SpiAddress, uint32_t ImageSize, uint32_t *pBu
 		}
 	}
 
+	// 3. CRC of the whole image as it will run: first sector from the SPI
+	// flash, the rest from the programmed internal flash. Catches any SPI read
+	// error during the copy and any change of the slot since its validation.
+	LoadSector(SpiAddress, 0, ImageSize, pBuffer);
+	if (ImageSize <= MB_INT_SECTOR_SIZE) {
+		Crc = Crc32Update(0xFFFFFFFFU, (const uint8_t *)pBuffer, ImageSize);
+	} else {
+		Crc = Crc32Update(0xFFFFFFFFU, (const uint8_t *)pBuffer, MB_INT_SECTOR_SIZE);
+		Crc = Crc32Update(Crc, (const volatile uint8_t *)(MB_INT_APP_BASE + MB_INT_SECTOR_SIZE), ImageSize - MB_INT_SECTOR_SIZE);
+	}
+
+	// 4. Only a checked image becomes bootable.
+	if (~Crc == ImageCrc32) {
+		ProgramSector(MB_INT_APP_BASE, pBuffer);
+	}
+
+Done:
 	FLASH->ctrl &= ~(MB_FLASH_FPRGM | MB_FLASH_SECERS);
 	FLASH->ctrl |= MB_FLASH_OPLK;
 	SystemReset();

@@ -426,7 +426,7 @@ static uint8_t PrepareBank(uint8_t Bank)
 	return BankReady(Bank) ? MB_OK : CopyBank(Bank, gActiveBank);
 }
 
-uint8_t MB_SwitchBank(uint8_t Bank)
+static uint8_t SwitchBank(uint8_t Bank)
 {
 	MB_State_t State;
 	uint8_t Error;
@@ -446,11 +446,11 @@ uint8_t MB_SwitchBank(uint8_t Bank)
 	return MB_OK;
 }
 
-uint8_t MB_RestoreSlot(uint8_t Slot, uint8_t Bank)
+static uint8_t RestoreSlot(uint8_t Slot, uint8_t Bank)
 {
 	// Called through a volatile pointer: the RAM code is out of BL range
 	// and must not be reached through a linker veneer.
-	void (*volatile pRestoreFn)(uint32_t, uint32_t, uint32_t *) = MB_RamRestore;
+	void (*volatile pRestoreFn)(uint32_t, uint32_t, uint32_t, uint32_t *) = MB_RamRestore;
 	MB_SlotHeader_t Header;
 	uint8_t Error;
 
@@ -483,9 +483,34 @@ uint8_t MB_RestoreSlot(uint8_t Slot, uint8_t Bank)
 		return MB_ERR_STATE;
 	}
 
-	pRestoreFn(MB_SLOT_IMAGE(Slot), Header.ImageSize, (uint32_t *)(gFlashBuffer + MB_RAM_BUFFER_OFFSET));
+	pRestoreFn(MB_SLOT_IMAGE(Slot), Header.ImageSize, Header.ImageCrc32, (uint32_t *)(gFlashBuffer + MB_RAM_BUFFER_OFFSET));
 
 	// Not reached: the RAM routine always resets the MCU.
 	while (1) {
 	}
+}
+
+// All interrupts are masked from the validation of the slot to the reset:
+// no UART command can modify the slot, a bank or the state in between (the
+// SPI driver only toggles NVIC enables, PRIMASK stays set).
+uint8_t MB_RestoreSlot(uint8_t Slot, uint8_t Bank)
+{
+	uint8_t Error;
+
+	__disable_irq();
+	Error = RestoreSlot(Slot, Bank);
+	__enable_irq();
+
+	return Error;
+}
+
+uint8_t MB_SwitchBank(uint8_t Bank)
+{
+	uint8_t Error;
+
+	__disable_irq();
+	Error = SwitchBank(Bank);
+	__enable_irq();
+
+	return Error;
 }

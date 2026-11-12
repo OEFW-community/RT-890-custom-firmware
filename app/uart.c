@@ -213,6 +213,14 @@ static void FlashCmd(uint8_t Command, uint8_t Hi, uint8_t Lo)
 		break;
 	}
 
+#ifdef ENABLE_MULTIBOOT
+	// The SPI flash ignores address bits above 4 MB: a block past the end of
+	// the region would wrap to 0x000000 (slot 0, state, banks).
+	if (Block >= Count * 32U) {
+		UART_SendByte(0xFF);
+		return;
+	}
+#endif
 	bFlashing = true;
 
 	if (Block == 0) {

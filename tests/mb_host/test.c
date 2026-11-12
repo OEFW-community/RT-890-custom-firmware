@@ -48,7 +48,7 @@ void SFLASH_Write(const void*b,uint32_t a,uint16_t n){const uint8_t*s=b;a=tr(a);
 static uint8_t *iflash=(uint8_t*)MB_INT_APP_BASE;
 static int restored=-1; static int resets;
 void NVIC_SystemReset(void){ resets++; longjmp(jb,1); } static uint32_t rsize;
-void MB_RamRestore(uint32_t a, uint32_t size, uint32_t *buf){ restored=a; rsize=size; CHECK0(buf==(uint32_t*)(gFlashBuffer+0x1000)); memset(iflash,0xFF,MB_INT_APP_SIZE); memcpy(iflash,spi+a,size); longjmp(jb,1); }
+void MB_RamRestore(uint32_t a, uint32_t size, uint32_t crc, uint32_t *buf){ restored=a; rsize=size; CHECK0(crc==crc32(0,spi+a,size)); CHECK0(buf==(uint32_t*)(gFlashBuffer+0x1000)); memset(iflash,0xFF,MB_INT_APP_SIZE); memcpy(iflash,spi+a,size); longjmp(jb,1); }
 #define CHECK(c) do{ if(!(c)){printf("FAIL line %d: %s\n",__LINE__,#c);exit(1);} }while(0)
 static void fillimg(uint8_t *p,int seed){ srand(seed); for(int i=0;i<MB_INT_APP_SIZE;i++)p[i]=rand(); uint32_t v[2]={0x20003FF0,0x08001500|1}; memcpy(p,v,8);}
 static void writeslot(int slot,int seed,uint32_t size){ uint8_t img[MB_INT_APP_SIZE]; fillimg(img,seed); uint32_t b=slot*0x10000;
