@@ -202,9 +202,10 @@ python3 tools/mb_tool.py -p /dev/ttyUSB0 dump-int int_backup.bin
 * Multiboot builds refuse UART command 0x40 (voice prompt upload): it would erase the slots and banks.
   A firmware without multiboot accepts it: do not upload voice prompts while you want to keep your slots.
 * A firmware without multiboot support may read the slots as voice prompts: disable "Voice Prompt" in it.
-* Do not power the radio off while "Please wait..." is shown. If the radio does not restart correctly after a
-  slot change, hold **side keys 1 and 2** while powering on and flash a firmware with the usual flasher: the
-  factory bootloader is never modified.
+* Do not power the radio off while "Please wait..." is shown. If a slot change is interrupted or fails, the
+  radio stays dark at the next power on (the partial image is never started): hold **side keys 1 and 2** while
+  powering on and flash a firmware with the usual flasher. The factory bootloader is never modified, and your
+  slots and configurations are kept.
 * The battery must be above the "please charge" level to change slot (error 8).
 
 ## Technical reference
@@ -256,10 +257,19 @@ committed, 5 image size, 6 image CRC, 7 vector table, 8 battery, 9 RAM code load
 write, 12 configuration bank copy.
 
 The restore routine (`driver/mb_ram.c`, section `.mb_ramfunc`) is linked over `gFlashBuffer` and copied there
-right before use. It runs from RAM with interrupts disabled and uses raw register accesses only. For each of the
-59 sectors of 1 KB it reads the SPI flash, erases the sector, programs it word by word and reads it back, with up
-to 3 attempts; bytes past the image size are left erased. Addresses outside 0x08001400-0x0800FFFF are refused
-by the routine itself. It then relocks the flash controller and resets the MCU, also on an unrecoverable error.
+right before use. It runs from RAM with interrupts disabled and uses raw register accesses only:
+
+1. the first sector (vector table) is erased and left erased;
+2. each of the 58 other sectors of 1 KB is read from the SPI flash, erased, programmed word by word and read
+   back, with up to 3 attempts; bytes past the image size are left erased;
+3. the CRC-32 of the whole image is computed (first sector from the SPI flash, the rest from the programmed
+   internal flash) and compared with the slot header;
+4. only then is the first sector programmed.
+
+Until step 4 the initial stack pointer reads 0xFFFFFFFF, so the factory bootloader never starts a partial or
+wrong image (and such an image can never be mistaken for a new Main). Addresses outside 0x08001400-0x0800FFFF
+are refused by the routine itself. It then relocks the flash controller and resets the MCU, also on an error.
+All interrupts are masked from the validation of the slot to the reset.
 `tools/check_mb_ramfunc.py` runs after every multiboot link: every branch of the routine must stay inside its
 section and its object must not contain any relocation (any reference to code or data in the internal flash).
 

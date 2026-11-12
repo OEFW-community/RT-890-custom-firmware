@@ -27,13 +27,15 @@
 
 // Rewrites the whole internal application area (59 sectors of 1 KB from
 // 0x08001400) with the ImageSize bytes stored in the SPI flash at SpiAddress
-// (the rest of the area is left erased), then resets the MCU. pBuffer is a
-// 1 KB, word aligned RAM buffer. Interrupts are disabled and the routine never
-// returns: on an unrecoverable sector error it relocks the flash controller
-// and resets immediately. The caller must have
+// (the rest of the area is left erased), then resets the MCU. The first
+// sector (vector table) is erased first and only programmed once the CRC-32
+// of the whole image matches ImageCrc32, so a partial or wrong image is never
+// bootable. pBuffer is a 1 KB, word aligned RAM buffer. Interrupts are
+// disabled and the routine never returns: on an unrecoverable sector error it
+// relocks the flash controller and resets immediately. The caller must have
 // validated the image beforehand. Must only be called through
 // MB_RestoreSlot() (driver/mb_flash.c).
-void MB_RamRestore(uint32_t SpiAddress, uint32_t ImageSize, uint32_t *pBuffer) __attribute__((noreturn));
+void MB_RamRestore(uint32_t SpiAddress, uint32_t ImageSize, uint32_t ImageCrc32, uint32_t *pBuffer) __attribute__((noreturn));
 
 #endif
 

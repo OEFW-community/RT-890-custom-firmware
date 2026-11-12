@@ -91,6 +91,8 @@ ERRORS = {
     8: "battery too low",
     9: "RAM code load failed",
     10: "read back mismatch",
+    11: "active state write failed",
+    12: "config bank copy failed",
 }
 
 
