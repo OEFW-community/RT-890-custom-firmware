@@ -30,7 +30,7 @@
 #define MB_INT_FLASH_BASE	0x08000000U
 #define MB_INT_FLASH_SIZE	0x10000U
 // 4 byte commands: Cmd Hi Lo Sum
-#define IS_SHORT_CMD(c)		((c) == 0x52 || (c) == 0x54 || (c) == 0x61 || (c) == 0x63)
+#define IS_SHORT_CMD(c)		((c) == 0x52 || (c) == 0x54 || (c) == 0x61 || (c) == 0x63 || (c) == 0x64)
 // 132 byte commands: Cmd Hi Lo Data[128] Sum
 #define IS_DATA_CMD(c)		(((c) >= 0x40 && (c) <= 0x4C) || (c) == 0x62)
 #else
@@ -69,6 +69,9 @@ static uint8_t CalcSum(const uint8_t *pBytes, uint8_t Size)
 //                                                            -> 0x06 / 0xFF
 //   0x63 Slot 0 Sum           validate a slot (header, CRC, vectors)
 //                             -> 0x63 Slot Status Crc32[4, little endian] Sum
+//   0x64 Bank 0 Sum           reset config bank 1-4 (not the active one): it
+//                             is copied again from the active bank on its
+//                             next use                       -> 0x06 / 0xFF
 static void SlotCmd(uint8_t Command, uint8_t Hi, uint8_t Lo)
 {
 	MB_SlotHeader_t Header;
@@ -84,7 +87,12 @@ static void SlotCmd(uint8_t Command, uint8_t Hi, uint8_t Lo)
 		UART_Send(Buffer, 8);
 		return;
 	}
-	if (Command == 0x61) {
+	if (Command == 0x64) {
+		if (MB_ResetBank(Hi) != MB_OK) {
+			UART_SendByte(0xFF);
+			return;
+		}
+	} else if (Command == 0x61) {
 		if (Hi == 0 || MB_EraseSlot(Hi) != MB_OK) {
 			UART_SendByte(0xFF);
 			return;
@@ -148,7 +156,7 @@ static void FlashCmd(uint8_t Command, uint8_t Hi, uint8_t Lo)
 		UART_Send(Buffer, 132);
 		return;
 	}
-	if (Command >= 0x61 && Command <= 0x63) {
+	if (Command >= 0x61 && Command <= 0x64) {
 		SlotCmd(Command, Hi, Lo);
 		return;
 	}

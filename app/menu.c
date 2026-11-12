@@ -79,7 +79,9 @@ static const char Menu[][14] = {
 	"DTMF Display  ",
 	"Personal ID   ",
 	"FM Standby    ",
+#ifdef ENABLE_NOAA
 	"NOAA Monitor  ",
+#endif
 	"Dark Theme    ",
 	"Screen Timer  ",
 	"Key Lock Timer",

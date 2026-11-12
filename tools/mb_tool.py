@@ -24,13 +24,16 @@ Read-only commands:
   dump-spi    back up the external SPI flash using command 0x52
   dump-int    back up the internal MCU flash (factory bootloader + application)
               using command 0x54
-  info        show the headers of the firmware slots
+  info        show the firmware slots, the active state and the config banks
   validate    ask the radio to fully check a slot (header, CRC, vectors)
 
-Slot writing (SPI flash only, slots 1 to 4, never the internal flash):
+Writing (SPI flash only, slots and banks 1 to 4, never the internal flash):
 
   write-slot  erase a slot, write a firmware image, then its committed
               header, and validate it
+  erase-slot  erase a slot
+  reset-bank  forget a config bank (not the active one): it is copied again
+              from the active bank the next time it is used
 
 Every command except dump-spi needs a firmware built with ENABLE_MULTIBOOT.
 
@@ -51,6 +54,7 @@ CMD_READ_INT = 0x54
 CMD_SLOT_ERASE = 0x61
 CMD_SLOT_WRITE = 0x62
 CMD_SLOT_VALIDATE = 0x63
+CMD_BANK_RESET = 0x64
 
 ACK = 0x06
 
@@ -67,6 +71,13 @@ HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
 SLOT_MAGIC = 0x31424D46  # "FMB1"
 HDR_VERSION = 1
 FLAG_COMMITTED = 1
+
+STATE_A, STATE_B = 0x050000, 0x051000
+STATE_FORMAT = "<IIIIBBBBI"
+STATE_MAGIC = 0x33504D46  # "FMP3"
+BANK_COUNT = 5
+BANK1_BASE, BANK_STRIDE, BANK_MARKER = 0x060000, 0x20000, 0x1F000
+BANK_MAGIC = 0x4B424D46  # "FMBK"
 
 ERRORS = {
     0: "OK",
@@ -164,6 +175,17 @@ class Radio:
     def erase_slot(self, slot):
         self.command_ack([CMD_SLOT_ERASE, slot, 0], timeout=5.0)
 
+    def reset_bank(self, bank):
+        self.command_ack([CMD_BANK_RESET, bank, 0])
+
+    def read_raw(self, address, size):
+        """Read SPI flash bytes (physical addresses, no bank translation)."""
+        first = address // BLOCK_SIZE
+        last = (address + size + BLOCK_SIZE - 1) // BLOCK_SIZE
+        data = b"".join(self.read_block(CMD_READ_SPI, b | RAW_FLAG) for b in range(first, last))
+        offset = address - first * BLOCK_SIZE
+        return data[offset:offset + size]
+
     def write_block(self, address, data):
         if address % BLOCK_SIZE or len(data) != BLOCK_SIZE:
             raise ValueError("unaligned block write")
@@ -194,9 +216,31 @@ def parse_header(raw):
             "name": text(name), "fw_version": text(fw_version)}
 
 
+def parse_state(raw):
+    magic, generation, size, crc, slot, slot_inv, bank, bank_inv, state_crc = struct.unpack(STATE_FORMAT, raw)
+    if magic != STATE_MAGIC:
+        return None
+    ok = (state_crc == zlib.crc32(raw[:20]) & 0xFFFFFFFF and slot ^ slot_inv == 0xFF and bank ^ bank_inv == 0xFF)
+    return {"generation": generation, "slot": slot, "bank": bank, "size": size, "crc": crc, "ok": ok}
+
+
 def info(radio):
+    states = [parse_state(radio.read_raw(a, struct.calcsize(STATE_FORMAT))) for a in (STATE_A, STATE_B)]
+    valid = [s for s in states if s and s["ok"]]
+    if valid:
+        s = max(valid, key=lambda s: s["generation"])
+        print("active: slot %d, config bank %d (firmware %d bytes, CRC %08X, generation %d)" % (
+            s["slot"], s["bank"], s["size"], s["crc"], s["generation"]))
+    else:
+        print("active: %s" % ("corrupt state" if any(states) else "no state yet"))
+    banks = ["0"]
+    for bank in range(1, BANK_COUNT):
+        magic, tag = struct.unpack("<II", radio.read_raw(BANK1_BASE + (bank - 1) * BANK_STRIDE + BANK_MARKER, 8))
+        if magic == BANK_MAGIC and tag == bank | ((~bank & 0xFF) << 8):
+            banks.append(str(bank))
+    print("initialised config banks: %s" % ", ".join(banks))
     for slot in range(SLOT_COUNT):
-        header = parse_header(radio.read_block(CMD_READ_SPI, slot * SLOT_STRIDE // BLOCK_SIZE))
+        header = parse_header(radio.read_raw(slot * SLOT_STRIDE, BLOCK_SIZE))
         if header is None:
             print("slot %d: empty" % slot)
             continue
@@ -287,6 +331,12 @@ def main():
     p = sub.add_parser("validate", help="full check of a slot by the radio (read-only)")
     p.add_argument("slot", type=int)
 
+    p = sub.add_parser("erase-slot", help="erase slot 1-4")
+    p.add_argument("slot", type=int)
+
+    p = sub.add_parser("reset-bank", help="forget config bank 1-4 (not the active one)")
+    p.add_argument("bank", type=int)
+
     p = sub.add_parser("write-slot", help="write a firmware image to slot 1-4")
     p.add_argument("slot", type=int)
     p.add_argument("image")
@@ -309,6 +359,16 @@ def main():
             status, crc = radio.validate_slot(args.slot)
             print("slot %d: %s, image CRC %08X" % (args.slot, ERRORS.get(status, status), crc))
             return 0 if status == 0 else 1
+        elif args.command == "erase-slot":
+            if not 1 <= args.slot < SLOT_COUNT:
+                raise ValueError("slots 1 to %d only" % (SLOT_COUNT - 1))
+            radio.erase_slot(args.slot)
+            print("slot %d erased" % args.slot)
+        elif args.command == "reset-bank":
+            if not 1 <= args.bank < BANK_COUNT:
+                raise ValueError("banks 1 to %d only" % (BANK_COUNT - 1))
+            radio.reset_bank(args.bank)
+            print("config bank %d reset: it will be copied from the active bank on its next use" % args.bank)
         elif args.command == "write-slot":
             with open(args.image, "rb") as f:
                 image = f.read()
