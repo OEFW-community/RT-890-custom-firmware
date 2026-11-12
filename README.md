@@ -121,7 +121,7 @@ does not hold the newest valid one, so a power loss always leaves a valid record
 At every boot, before the settings are loaded, the CRC of the running firmware is compared with the active state:
 
 * match: normal boot, nothing is written;
-* no state at all (first multiboot boot) or mismatch (firmware flashed with the usual flasher): the running
+* no state at all (first multiboot boot: the state sectors are erased or still hold voice prompt data) or mismatch (firmware flashed with the usual flasher): the running
   firmware becomes **Main**. It is copied to slot 0, verified, and recorded as active (slot 0, bank 0). The red
   LED is lit during this copy (a few seconds, once);
 * corrupt state: nothing is written, Main is never overwritten.

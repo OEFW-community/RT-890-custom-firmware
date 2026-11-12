@@ -214,16 +214,14 @@ static uint32_t StateCrc(const MB_State_t *pState)
 
 static uint8_t ReadStateCopy(uint32_t Address, MB_State_t *pState)
 {
-	uint8_t i;
-
 	SFLASH_Read(pState, Address, sizeof(*pState));
-	for (i = 0; i < sizeof(*pState) && ((const uint8_t *)pState)[i] == 0xFF; i++) {
-	}
-	if (i == sizeof(*pState)) {
+	// No record ever written here: the sector is erased, or still holds
+	// data of the former voice prompt area. A record is written in a single
+	// page program, starting with its magic.
+	if (pState->Magic != MB_STATE_MAGIC) {
 		return MB_STATE_MISSING;
 	}
-	if (pState->Magic != MB_STATE_MAGIC ||
-		pState->StateCrc32 != StateCrc(pState) ||
+	if (pState->StateCrc32 != StateCrc(pState) ||
 		(uint8_t)~pState->Slot != pState->SlotInv ||
 		(uint8_t)~pState->Bank != pState->BankInv ||
 		pState->Slot >= MB_SLOT_COUNT ||

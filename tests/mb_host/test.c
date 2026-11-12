@@ -48,11 +48,13 @@ static void writeslot(int slot,int seed,uint32_t size){ uint8_t img[MB_INT_APP_S
  memset(spi+b,0xFF,0x10000); memcpy(spi+b+0x1000,img,size); MB_SlotHeader_t h; memset(&h,0,sizeof h); h.Magic=MB_SLOT_MAGIC;h.HdrVersion=1;h.Flags=1;h.ImageSize=size;h.ImageCrc32=crc32(0,img,size); strcpy(h.Name,"T"); memcpy(spi+b,&h,64);}
 int main(void){
  CHECK(mmap((void*)0x08000000,0x10000,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED,-1,0)==(void*)0x08000000);
- memset(spi,0xFF,sizeof spi); MB_State_t st; MB_SlotHeader_t h;
+ // The former voice prompt area is not erased on a real radio.
+ srand(42); for(size_t i=0;i<sizeof spi;i++) spi[i]=rand(); MB_State_t st; MB_SlotHeader_t h;
  CHECK(MB_Crc32(0,(uint8_t*)"123456789",9)==0xCBF43926);
  fillimg(iflash,1);
- // 1. fresh radio
+ // 1. fresh radio, state sectors full of voice prompt data
  CHECK(MB_ReadState(&st)==MB_STATE_MISSING);
+ CHECK(MB_ReadSlotHeader(2,&h)==MB_ERR_MAGIC);
  MB_BootCheck(); CHECK(MB_ReadState(&st)==MB_STATE_VALID && st.Slot==0 && st.Bank==0 && st.Generation==1);
  CHECK(MB_ValidateSlot(0,&h,NULL)==MB_OK && h.ImageCrc32==crc32(0,iflash,MB_INT_APP_SIZE) && !memcmp(h.Name,"Main",4));
  writes=0; MB_BootCheck(); CHECK(writes==0); // normal boot writes nothing
@@ -86,5 +88,11 @@ int main(void){
  fillimg(iflash,3); writes=0; MB_BootCheck(); CHECK(writes==0 && !memcmp(main_hdr,spi,64));
  // 8. both records erased again: adopt the running firmware
  memset(spi+MB_STATE_A,0xFF,8192); fillimg(iflash,4); MB_BootCheck(); CHECK(MB_ReadState(&st)==MB_STATE_VALID && st.Generation==1);
+ CHECK(MB_ValidateSlot(0,&h,NULL)==MB_OK && h.ImageCrc32==crc32(0,iflash,MB_INT_APP_SIZE));
+ // 9. one record corrupt, the other sector holds foreign data: uncertain
+ for(int i=0;i<4096;i++) spi[MB_STATE_B+i]=rand();
+ CHECK(MB_ReadState(&st)==MB_STATE_VALID); // record in A, foreign data in B
+ spi[MB_STATE_A+8]^=1; CHECK(MB_ReadState(&st)==MB_STATE_CORRUPT);
+ uint8_t hdr0[64]; memcpy(hdr0,spi,64); fillimg(iflash,5); writes=0; MB_BootCheck(); CHECK(writes==0 && !memcmp(hdr0,spi,64));
  printf("all host tests passed\n");
  return 0;}

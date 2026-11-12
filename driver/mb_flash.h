@@ -100,9 +100,11 @@ typedef struct {
 	uint32_t StateCrc32;		// CRC-32 of all preceding fields
 } MB_State_t;
 
-// MB_ReadState() results. MISSING (both sectors erased) means a radio that
-// never ran a multiboot firmware: adopting the running firmware as Main is
-// safe. CORRUPT means uncertain: Main must never be overwritten then.
+// MB_ReadState() results. MISSING (no record magic in either sector: erased,
+// or still holding voice prompt data) means a radio that never ran a
+// multiboot firmware: adopting the running firmware as Main is safe. CORRUPT
+// (a record with a bad integrity check and no valid one) means uncertain:
+// Main must never be overwritten then.
 enum {
 	MB_STATE_VALID = 0,
 	MB_STATE_MISSING,
