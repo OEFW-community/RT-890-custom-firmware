@@ -41,6 +41,8 @@ static void WaitKey(KEY_t Key)
 	}
 }
 
+// Text is drawn upwards from its Y coordinate (rows Y-16 to Y-1): the six
+// visible text lines are Y = 96, 80, 64, 48, 32 and 16.
 static void ClearScreen(void)
 {
 	DISPLAY_Fill(0, 159, 0, 96, COLOR_BACKGROUND);
@@ -61,7 +63,7 @@ static void DrawMessage(const char *pString, uint8_t Error)
 	}
 	ClearScreen();
 	UI_DrawString(0, 80, gString, Size);
-	UI_DrawString(0, 0, "EXIT: back", 10);
+	UI_DrawString(0, 16, "EXIT: back", 10);
 	WaitKey(KEY_EXIT);
 }
 
@@ -90,15 +92,15 @@ static void DrawSlots(void)
 			gString[2] = '-';
 			gString[3] = '0' + Error;
 		}
-		UI_DrawString(0, 80 - (Slot * 16), gString, 19);
+		UI_DrawString(0, 96 - (Slot * 16), gString, 19);
 	}
 	gString[0] = 'I';
 	gString[1] = 'N';
 	gString[2] = 'T';
 	gString[3] = ' ';
 	ToHex(gString + 4, MB_InternalCrc32());
-	UI_DrawString(0, 0, gString, 12);
-	UI_DrawString(104, 0, "M:Bkp", 5);
+	UI_DrawString(0, 16, gString, 12);
+	UI_DrawString(112, 16, "M:Bkp", 5);
 }
 
 static void RestoreSlot(uint8_t Slot)
