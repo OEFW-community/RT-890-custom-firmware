@@ -26,16 +26,28 @@
 #include "radio/hardware.h"
 #include "radio/settings.h"
 
+// Host protocol extensions of this firmware, reported by command 0x56.
+//   bit 0: command 0x4D (extended settings write) is available
+//   bit 1: multiboot build (commands 0x54 and 0x61-0x64)
+#define UART_INFO_MAGIC		"RT890CFW"
+#define UART_INFO_VERSION	1U
+#define UART_INFO_EXT_SETTINGS	0x01U
+#ifdef ENABLE_MULTIBOOT
+#define UART_INFO_FLAGS		(UART_INFO_EXT_SETTINGS | 0x02U)
+#else
+#define UART_INFO_FLAGS		UART_INFO_EXT_SETTINGS
+#endif
+
 #ifdef ENABLE_MULTIBOOT
 #define MB_INT_FLASH_BASE	0x08000000U
 #define MB_INT_FLASH_SIZE	0x10000U
 // 4 byte commands: Cmd Hi Lo Sum
-#define IS_SHORT_CMD(c)		((c) == 0x52 || (c) == 0x54 || (c) == 0x61 || (c) == 0x63 || (c) == 0x64)
+#define IS_SHORT_CMD(c)		((c) == 0x52 || (c) == 0x54 || (c) == 0x56 || (c) == 0x61 || (c) == 0x63 || (c) == 0x64)
 // 132 byte commands: Cmd Hi Lo Data[128] Sum
-#define IS_DATA_CMD(c)		(((c) >= 0x40 && (c) <= 0x4C) || (c) == 0x62)
+#define IS_DATA_CMD(c)		(((c) >= 0x40 && (c) <= 0x4D) || (c) == 0x62)
 #else
-#define IS_SHORT_CMD(c)		((c) == 0x52)
-#define IS_DATA_CMD(c)		((c) >= 0x40 && (c) <= 0x4C)
+#define IS_SHORT_CMD(c)		((c) == 0x52 || (c) == 0x56)
+#define IS_DATA_CMD(c)		((c) >= 0x40 && (c) <= 0x4D)
 #endif
 
 static uint8_t Buffer[256];
@@ -123,6 +135,24 @@ static void FlashCmd(uint8_t Command, uint8_t Hi, uint8_t Lo)
 		return;
 	}
 #endif
+	if (Command == 0x56) {
+		// Firmware information, framed like a 0x52 answer. A firmware
+		// without this command rejects each byte of the request with 0xFF,
+		// so a host can probe for it safely before using 0x4D.
+		//   0-7: "RT890CFW", 8: info version, 9: flags (UART_INFO_*),
+		//   16-31: git hash (NUL padded), rest 0
+		memset(Buffer + 3, 0, 128);
+		memcpy(Buffer + 3, UART_INFO_MAGIC, 8);
+		Buffer[3 + 8] = UART_INFO_VERSION;
+		Buffer[3 + 9] = UART_INFO_FLAGS;
+		memcpy(Buffer + 3 + 16, GIT_HASH, (sizeof(GIT_HASH) - 1) < 16 ? sizeof(GIT_HASH) - 1 : 16);
+		Buffer[0] = 0x56;
+		Buffer[1] = Hi;
+		Buffer[2] = Lo;
+		Buffer[131] = CalcSum(Buffer, 0x83);
+		UART_Send(Buffer, 132);
+		return;
+	}
 	if (Command == 0x52) {
 		Buffer[0] = 0x52;
 		Buffer[1] = Hi;
@@ -211,12 +241,24 @@ static void FlashCmd(uint8_t Command, uint8_t Hi, uint8_t Lo)
 		Page = 0x31C;
 		Count = 0x99;
 		break;
+	case 0x4D:
+		// Extended settings of this firmware (gExtendedSettings), one
+		// sector outside of the area of command 0x49.
+		Page = 0x3D5;
+		Count = 0x001;
+		break;
 	}
 
 #ifdef ENABLE_MULTIBOOT
 	// The SPI flash ignores address bits above 4 MB: a block past the end of
 	// the region would wrap to 0x000000 (slot 0, state, banks).
 	if (Block >= Count * 32U) {
+		UART_SendByte(0xFF);
+		return;
+	}
+#else
+	// Keep 0x4D inside its sector.
+	if (Command == 0x4D && Block >= 32U) {
 		UART_SendByte(0xFF);
 		return;
 	}
