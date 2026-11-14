@@ -269,6 +269,63 @@ is selected at boot.
 * Hardware findings and the analysis of the factory bootloader:
   [docs/multiboot-hardware-notes.md](docs/multiboot-hardware-notes.md).
 
+## CHIRP
+
+`tools/chirp/radtel_rt890_oefw.py` is a [CHIRP](https://chirpmyradio.com) driver for a radio running this firmware
+(model "Radtel RT-890 OEFW"). It reads and writes:
+
+* the 999 channels and both VFOs: frequency, offset or split, CTCSS/DCS (also cross modes and DCS polarity),
+  modulation (FM, AM, LSB, USB) and bandwidth, power, name, and in the extra properties busy channel lockout,
+  scrambler, DCS encrypt, DCS mute code and the 8 scan lists;
+* every menu setting: squelch, step, TOT, VOX, roger beep, timers, startup screen, personal ID, work mode of
+  each VFO and channels, preset channels, FM frequency, side keys and long press shortcuts, scan settings, squelch
+  mode and levels, mic gain, dark theme, AM fix, DTMF settings, contacts and kill/stun/wake codes, kill/stun state.
+
+### Usage
+
+1. In CHIRP, enable the developer mode (Help menu) and restart CHIRP, then load the driver with
+   File > Load Module.
+2. Turn the radio on **normally** (not in bootloader mode) and connect the programming cable.
+3. Radio > Download From Radio, vendor "Radtel", model "RT-890 OEFW".
+
+Upload works the same way. The radio copies the new configuration to its factory reset template, then
+reboots. Do not disconnect the cable during an upload: the channel area is erased first. In multiboot builds,
+CHIRP reads and writes the configuration bank of the running slot.
+
+The extended settings of this firmware (scan, squelch mode and levels, key shortcuts, dark theme, mic gain,
+AM fix) are stored outside of the area that the original protocol can write, so they need commands 0x4D and
+0x56. With an older build of this firmware the channels and the other settings are written and CHIRP reports
+that the extended settings were not.
+
+### Protocol
+
+Same framing and checksum as the other UART commands (115200 8N1, radio powered on normally).
+
+| Command | Frame | Answer |
+|---|---|---|
+| 0x35 | `35 00 00 10 Sum` | hello, `06` |
+| 0x52 | `52 Hi Lo Sum` | 128 bytes of SPI flash at Hi:Lo × 128: configuration 0x3C1000-0x3CAFFF, extended settings 0x3D5000 |
+| 0x49 | `49 Hi Lo Data[128] Sum` | block Hi:Lo of the configuration area (0x3C1000-0x3CAFFF), erased when block 0 is written, `06` |
+| 0x4D | `4D Hi Lo Data[128] Sum` | block Hi:Lo (0-31) of the extended settings sector (0x3D5000), erased when block 0 is written, `06` or `FF` |
+| 0x56 | `56 00 00 Sum` | `56 00 00 Info[128] Sum`: `RT890CFW`, info version (1), flags (bit 0: 0x4D available, bit 1: multiboot build), git hash at offset 16 |
+| 0x35 | `35 00 00 EE Sum` | end of session, not acknowledged; after a write the radio backs up the configuration and reboots |
+
+A firmware without command 0x56 answers `FF` to each byte of its request, so a host can probe for it without
+side effects before it sends 0x4D.
+
+### Test
+
+`tests/chirp/test_rt890_oefw.py` checks the driver against a byte level model of `app/uart.c` and of the SPI
+flash, with the memory layout rebuilt from the C structures. It needs CHIRP:
+
+```
+pip install -e /path/to/chirp
+python3 tests/chirp/test_rt890_oefw.py
+```
+
+The driver also passes the driver tests of CHIRP (`tests/test_drivers.py`) with an image saved from the
+simulated radio.
+
 ## Telegram group
 If you want to discuss this project, you can join the [Telegram group](https://t.me/RT890_OEFW).
 
