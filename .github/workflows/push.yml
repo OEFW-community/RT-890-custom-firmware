@@ -12,7 +12,7 @@ jobs:
         release: '10.3-2021.10'
 
     - name: Checkout
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Submodules
       run: git submodule update --init --recursive --depth 1
@@ -24,7 +24,7 @@ jobs:
       run:  arm-none-eabi-size firmware
 
     - name: 'Upload Artifact'
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: firmware
         path: firmware*.bin
