@@ -23,6 +23,20 @@ jobs:
     - name: size
       run:  arm-none-eabi-size firmware
 
+    - name: Make multiboot
+      run: |
+        mv firmware.bin firmware.bin.default
+        make clean
+        make ENABLE_MULTIBOOT=1 ENABLE_NOAA=0 ENABLE_SPECTRUM_PRESETS=0
+        arm-none-eabi-size -A firmware | grep -E '^\.(text|fill|mb_ramfunc) '
+        mv firmware.bin firmware-multiboot.bin
+        mv firmware.bin.default firmware.bin
+
+    - name: Multiboot host test
+      run: |
+        dpkg -s zlib1g-dev >/dev/null 2>&1 || (sudo apt-get update -q && sudo apt-get install -y zlib1g-dev)
+        make -C tests/mb_host
+
     - name: 'Upload Artifact'
       uses: actions/upload-artifact@v4
       with:

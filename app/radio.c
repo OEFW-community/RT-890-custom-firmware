@@ -16,6 +16,10 @@
 
 #include "app/css.h"
 #include "app/fm.h"
+#ifdef ENABLE_MULTIBOOT
+	#include "app/mbselect.h"
+	#include "driver/mb_flash.h"
+#endif
 #include "app/radio.h"
 #include "driver/beep.h"
 #include "driver/bk4819.h"
@@ -217,7 +221,13 @@ void RADIO_Init(void)
 	}
 
 	SETTINGS_LoadCalibration();
+#ifdef ENABLE_MULTIBOOT
+	MB_BootCheck();
+#endif
 	SETTINGS_LoadSettings();
+#ifdef ENABLE_MULTIBOOT
+	MBSELECT_CheckBoot();
+#endif
 
 	// Dual Watch requires Dual Display — clear persisted state if mismatched
 	if (!gSettings.DualDisplay && gSettings.DualStandby) {

@@ -20,6 +20,31 @@
 
 static bool gSPI_Lock;
 
+#ifdef ENABLE_MULTIBOOT
+// Multiboot config banks: accesses to the config range are redirected to the
+// active bank. Banks live below SFLASH_BANK_START, so a translated address is
+// never translated again (internal calls of SFLASH_Update stay correct).
+static uint32_t gBankOffset;
+bool gSFLASH_BankReady;
+
+static uint32_t Translate(uint32_t Address)
+{
+	if (Address - SFLASH_BANK_START < SFLASH_BANK_SIZE) {
+		Address += gBankOffset;
+	}
+
+	return Address;
+}
+
+void SFLASH_SetBankBase(uint32_t Base)
+{
+	gBankOffset = Base - SFLASH_BANK_START;
+	gSFLASH_BankReady = true;
+}
+#else
+#define Translate(Address) (Address)
+#endif
+
 static uint8_t Transfer(uint8_t Output)
 {
 	uint8_t Input = 0U;
@@ -106,7 +131,11 @@ void SFLASH_Init(void)
 	Transfer(0xFF);
 }
 
+#ifdef ENABLE_MULTIBOOT
+void SFLASH_ReadRaw(void *pBuffer, uint32_t Address, uint16_t Size)
+#else
 void SFLASH_Read(void *pBuffer, uint32_t Address, uint16_t Size)
+#endif
 {
 	uint8_t *pBytes = (uint8_t *)pBuffer;
 	uint16_t i;
@@ -133,9 +162,36 @@ void SFLASH_Read(void *pBuffer, uint32_t Address, uint16_t Size)
 	}
 }
 
+#ifdef ENABLE_MULTIBOOT
+void SFLASH_Read(void *pBuffer, uint32_t Address, uint16_t Size)
+{
+	SFLASH_ReadRaw(pBuffer, Translate(Address), Size);
+}
+#endif
+
+uint32_t SFLASH_ReadJedecId(void)
+{
+	uint32_t Id;
+
+	HARDWARE_EnableInterrupts(false);
+
+	gpio_bits_reset(GPIOB, BOARD_GPIOB_SF_CS);
+
+	Transfer(0x9F);
+	Id  = Transfer(0xFF) << 16;
+	Id |= Transfer(0xFF) << 8;
+	Id |= Transfer(0xFF);
+
+	gpio_bits_set(GPIOB, BOARD_GPIOB_SF_CS);
+
+	HARDWARE_EnableInterrupts(true);
+
+	return Id;
+}
+
 void SFLASH_Erase(uint32_t Page)
 {
-	Page <<= 12;
+	Page = Translate(Page << 12);
 
 	EnableWrite();
 
@@ -158,6 +214,8 @@ void SFLASH_Write(const void *pBuffer, uint32_t Address, uint16_t Size)
 {
 	const uint8_t *pBytes = (const uint8_t *)pBuffer;
 	uint16_t Remaining;
+
+	Address = Translate(Address);
 
 	Remaining = 0x100 - (Address & 0xFF);
 	if (Size <= Remaining) {
@@ -186,6 +244,8 @@ void SFLASH_Update(const void *pBuffer, uint32_t Address, uint16_t Size)
 	uint16_t Offset;
 	uint16_t Remaining;
 	uint16_t i;
+
+	Address = Translate(Address);
 
 	gSPI_Lock = true;
 

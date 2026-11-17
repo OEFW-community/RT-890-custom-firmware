@@ -19,6 +19,15 @@ ENABLE_SLOWER_RSSI_TIMER ?= 1
 ENABLE_833_RETUNE        ?= 1
 ENABLE_KEEP_MONITOR_MODE_UP_DN	?= 1
 # PCB_VER_2_1 ?= 0  # Retired: now runtime-selectable via PCB Revision menu item
+# Voice prompts (samples stored in the SPI flash) - 1 kB
+ENABLE_VOICE_PROMPT		 ?= 1
+# Multiboot: firmware slots + config banks in the former voice prompt area of the SPI flash.
+# Require disabling voice prompts (obviously), and for size, spectrum presets and NOAA for example.
+ENABLE_MULTIBOOT		 ?= 0
+
+ifeq ($(ENABLE_MULTIBOOT), 1)
+	override ENABLE_VOICE_PROMPT := 0
+endif
 
 OBJS =
 # Startup files
@@ -35,7 +44,9 @@ OBJS += bsp/misc.o
 OBJS += bsp/tmr.o
 
 # Drivers
-OBJS += driver/audio.o
+ifeq ($(ENABLE_VOICE_PROMPT), 1)
+	OBJS += driver/audio.o
+endif
 OBJS += driver/battery.o
 OBJS += driver/beep.o
 ifeq ($(ENABLE_FM_RADIO), 1)
@@ -46,6 +57,10 @@ OBJS += driver/crm.o
 OBJS += driver/delay.o
 OBJS += driver/key.o
 OBJS += driver/led.o
+ifeq ($(ENABLE_MULTIBOOT), 1)
+	OBJS += driver/mb_flash.o
+	OBJS += driver/mb_ram.o
+endif
 OBJS += driver/pwm.o
 OBJS += driver/serial-flash.o
 OBJS += driver/speaker.o
@@ -59,6 +74,9 @@ ifeq ($(ENABLE_FM_RADIO), 1)
 	OBJS += app/fm.o
 endif
 OBJS += app/lock.o
+ifeq ($(ENABLE_MULTIBOOT), 1)
+	OBJS += app/mbselect.o
+endif
 OBJS += app/menu.o
 OBJS += app/radio.o
 ifeq ($(ENABLE_REGISTER_EDIT), 1)
@@ -112,7 +130,9 @@ OBJS += task/scanner.o
 OBJS += task/screen.o
 OBJS += task/sidekeys.o
 OBJS += task/timeout.o
-OBJS += task/voice.o
+ifeq ($(ENABLE_VOICE_PROMPT), 1)
+	OBJS += task/voice.o
+endif
 OBJS += task/vox.o
 
 # User Interface
@@ -148,6 +168,7 @@ AS = arm-none-eabi-as
 CC = arm-none-eabi-gcc
 LD = arm-none-eabi-gcc
 OBJCOPY = arm-none-eabi-objcopy
+OBJDUMP = arm-none-eabi-objdump
 SIZE = arm-none-eabi-size
 
 GIT_HASH_TMP := $(shell git rev-parse --short HEAD)
@@ -235,6 +256,12 @@ endif
 ifeq ($(ENABLE_KEEP_MONITOR_MODE_UP_DN), 1)
 	CFLAGS += -DENABLE_KEEP_MONITOR_MODE_UP_DN
 endif
+ifeq ($(ENABLE_VOICE_PROMPT), 1)
+	CFLAGS += -DENABLE_VOICE_PROMPT
+endif
+ifeq ($(ENABLE_MULTIBOOT), 1)
+	CFLAGS += -DENABLE_MULTIBOOT
+endif
 
 all: $(TARGET)
 	$(OBJCOPY) -O binary $< $<.bin
@@ -247,6 +274,12 @@ ui/version.o: .FORCE
 
 $(TARGET): $(OBJS)
 	$(LD) $(LDFLAGS) $^ -o $@ $(LIBS)
+ifeq ($(ENABLE_MULTIBOOT),1)
+	python3 tools/check_mb_ramfunc.py --objdump $(OBJDUMP) $@ driver/mb_ram.o || (rm -f $@; false)
+endif
+
+# The RAM-resident multiboot code is checked object by object: never LTO it.
+driver/mb_ram.o: CFLAGS += -fno-lto
 
 %.o: %.c
 	$(CC) $(CFLAGS) $(INC) -c $< -o $@
@@ -259,4 +292,5 @@ $(TARGET): $(OBJS)
 -include $(DEPS)
 
 clean:
-	rm -f $(TARGET).bin $(TARGET) $(OBJS) $(DEPS)
+	rm -f $(TARGET).bin $(TARGET)
+	find . \( -name '*.o' -o -name '*.d' \) -not -path './.git/*' -delete

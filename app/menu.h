@@ -102,7 +102,9 @@ enum {
 	MENU_SCAN_BLINK,
 	MENU_LED_HEARTBEAT,
 	MENU_RINGTONE,
+#ifdef ENABLE_VOICE_PROMPT
 	MENU_VOICE_PROMPT,
+#endif
 	MENU_KEY_BEEP,
 	MENU_PERSONAL_ID,
 	// --- GROUP 9: Power / Radio Behaviour ---
@@ -130,7 +132,11 @@ void MENU_KeyHandler(uint8_t Key);
 void MENU_Next(uint8_t Key);
 void MENU_SettingKeyHandler(uint8_t Key);
 void MENU_ScrollSetting(uint8_t Key);
+#ifdef ENABLE_VOICE_PROMPT
 void MENU_PlayAudio(uint8_t ID);
+#else
+static inline void MENU_PlayAudio(uint8_t ID) { (void)ID; }
+#endif
 
 #endif
 
