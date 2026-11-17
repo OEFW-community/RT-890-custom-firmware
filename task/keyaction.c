@@ -41,7 +41,9 @@
 #include "helper/helper.h"
 #include "helper/inputbox.h"
 #include "misc.h"
-#include "radio/detector.h"
+#ifdef ENABLE_FREQ_DETECTOR
+	#include "radio/detector.h"
+#endif
 #include "radio/scheduler.h"
 #include "radio/settings.h"
 #include "task/alarm.h"
@@ -142,6 +144,7 @@ void KeypressAction(uint8_t Action) {
 				RADIO_Tune(gSettings.CurrentVfo);
 				break;
 
+#ifdef ENABLE_FREQ_DETECTOR
 			case ACTION_FREQUENCY_DETECT:
 				if (!gSettings.bFLock
 #ifdef ENABLE_FM_RADIO			
@@ -153,6 +156,7 @@ void KeypressAction(uint8_t Action) {
 					RADIO_FrequencyDetect();
 				}
 				break;
+#endif
 
 			case ACTION_REPEATER_MODE:
 				gSettings.RepeaterMode = (gSettings.RepeaterMode + 1) % 3;

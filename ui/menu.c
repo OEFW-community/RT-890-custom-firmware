@@ -140,7 +140,11 @@ void UI_DrawActions(uint8_t Index)
 	static const char Actions[][12] = {
 		"None        ",
 		"Monitor     ",
+#ifdef ENABLE_FREQ_DETECTOR
 		"Freq Detect ",
+#else
+		"[DISABLED]  ",
+#endif
 		"Repeat Mode ",
 		"Preset CH   ",
 		"Local Alarm ",

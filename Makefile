@@ -11,6 +11,8 @@ ENABLE_TX_BAR			?= 1
 ENABLE_SLOWER_RSSI_TIMER	?= 1
 ENABLE_SPECTRUM			?= 1
 ENABLE_KEEP_MONITOR_MODE_UP_DN	?= 0
+# Frequency detector (key action) and its radar picture - 2.2 kB
+ENABLE_FREQ_DETECTOR		?= 1
 PCB_VER_2_1			?= 0
 
 
@@ -106,7 +108,9 @@ OBJS += misc.o
 # Radio management
 OBJS += radio/channels.o
 OBJS += radio/data.o
-OBJS += radio/detector.o
+ifeq ($(ENABLE_FREQ_DETECTOR), 1)
+	OBJS += radio/detector.o
+endif
 OBJS += radio/frequencies.o
 OBJS += radio/hardware.o
 OBJS += radio/scheduler.o
@@ -271,6 +275,9 @@ ifeq ($(ENABLE_KEEP_MONITOR_MODE_UP_DN), 1)
 endif
 ifeq ($(ENABLE_STATUS_BAR_LINE), 1)
 	CFLAGS += -DENABLE_STATUS_BAR_LINE
+endif
+ifeq ($(ENABLE_FREQ_DETECTOR), 1)
+	CFLAGS += -DENABLE_FREQ_DETECTOR
 endif
 ifeq ($(ENABLE_VOICE_PROMPT), 1)
 	CFLAGS += -DENABLE_VOICE_PROMPT
