@@ -75,6 +75,7 @@ code. The default build (`make`) is unchanged and contains no multiboot code.
 
 | Option | Default | Effect |
 |---|---|---|
+| `ENABLE_FREQ_DETECTOR` | 1 | Frequency detector key action and its radar picture (about 2.2 kB). When 0, the "Freq Detect" action shows `[DISABLED]` and does nothing. Can free space in a multiboot build with more options. |
 | `ENABLE_VOICE_PROMPT` | 1 | Voice prompts. Forced to 0 by `ENABLE_MULTIBOOT`. |
 | `ENABLE_MULTIBOOT` | 0 | Multiboot support. Also disables voice prompts, spectrum presets and NOAA, and adds UART commands 0x54 and 0x61-0x64. |
 

@@ -68,17 +68,23 @@ void UI_DrawBootVoltage(uint8_t X, uint8_t Y);
 void UI_DrawDecimal(const char *pInput);
 void UI_DrawMenuPosition(const char *pString);
 void UI_DrawStringSwitchType(void);
+#ifdef ENABLE_FREQ_DETECTOR
 void UI_DrawRadar(void);
+#endif
 void UI_DrawGolay(void);
 void UI_DrawChannelNumber(const char *pString);
+#ifdef ENABLE_FREQ_DETECTOR
 void UI_DrawBand(void);
 void UI_DrawScanFrequency(uint32_t Frequency);
 void UI_DrawCtdcScan(void);
 void UI_DrawCtcssCode(uint16_t Code);
 void UI_DrawDcsCodeN(uint16_t Code);
+#endif
 void UI_DrawDTMFString(void);
+#ifdef ENABLE_FREQ_DETECTOR
 void UI_DrawMuteInfo(bool bIs24Bit, uint32_t Golay);
 void UI_DrawNone(void);
+#endif
 void UI_DrawScan(void);
 #ifdef ENABLE_SCANLIST_DISPLAY
 void UI_DrawScanLists(uint8_t Vfo);
