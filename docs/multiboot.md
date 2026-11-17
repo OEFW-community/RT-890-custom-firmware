@@ -16,8 +16,9 @@ The design follows the multiboot of Armel F4HWN for the UV-K1/UV-K5 V3
 ## What a multiboot build removes
 
 `ENABLE_MULTIBOOT=1` disables **voice prompts** (their SPI flash area is reused). To fit in the 59 KB of internal
-flash, the reference multiboot build (the one made by the CI) also disables **NOAA** (North America only); spectrum
-presets are already disabled by default in this firmware. If the build still does not fit with your options,
+flash, the reference multiboot build (the one made by the CI) also disables **NOAA** (North America only) and the
+**frequency detector** (`ENABLE_FREQ_DETECTOR=0`: the "Freq Detect" key action does nothing). The spectrum of this
+firmware has no presets. If the build still does not fit with your options,
 disable the register editor (`ENABLE_REGISTER_EDIT=0`) or enable LTO (`ENABLE_LTO=1`).
 
 ## Building
@@ -25,7 +26,7 @@ disable the register editor (`ENABLE_REGISTER_EDIT=0`) or enable LTO (`ENABLE_LT
 ```
 git submodule update --init --recursive --depth=1
 make clean
-make ENABLE_MULTIBOOT=1 ENABLE_NOAA=0 ENABLE_SPECTRUM_PRESETS=0
+make ENABLE_MULTIBOOT=1 ENABLE_NOAA=0 ENABLE_FREQ_DETECTOR=0
 ```
 
 Run `make clean` whenever you change build options. Python 3 is needed for the post-link check of the restore
@@ -34,6 +35,7 @@ code. The default build (`make`) is unchanged and contains no multiboot code.
 | Option | Default | Effect |
 |---|---|---|
 | `ENABLE_VOICE_PROMPT` | 1 | Voice prompts. Forced to 0 by `ENABLE_MULTIBOOT`. |
+| `ENABLE_FREQ_DETECTOR` | 1 | Frequency detector key action and its radar picture (about 2.2 kB). |
 | `ENABLE_MULTIBOOT` | 0 | Multiboot support. Forces voice prompts off and adds UART commands 0x54 and 0x61-0x64. |
 
 ## Installation
