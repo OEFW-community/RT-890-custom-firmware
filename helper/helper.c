@@ -34,9 +34,10 @@ void Int2Ascii(uint32_t Number, uint8_t Size)
 
 uint16_t TIMER_Calculate(uint16_t Setting)
 {
-	if (Setting < 4) {
-		return Setting * 5;
-	} else {
+	if (Setting == 0) {
+		return 0;
+	}
+	if (Setting != 1 && Setting != 2 && Setting != 3) {
 		return (Setting - 2) * 15;
 	}
 
@@ -54,6 +55,16 @@ void SCREEN_TurnOn(void)
 
 void STANDBY_BlinkGreen(void)
 {
+	if (!gExtendedSettings.LedHeartbeat) {
+		if (gBlinkGreen) {
+			gpio_bits_reset(GPIOA, BOARD_GPIOA_LED_GREEN);
+			gBlinkGreen = false;
+			gGreenLedTimer = 0;
+		}
+		STANDBY_Counter = 0;
+		return;
+	}
+
 	if (STANDBY_Counter > 5000) {
 		STANDBY_Counter = 0;
 		gpio_bits_set(GPIOA, BOARD_GPIOA_LED_GREEN);

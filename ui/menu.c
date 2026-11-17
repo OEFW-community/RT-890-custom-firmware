@@ -54,7 +54,7 @@ void UI_DrawDtmfMode(uint8_t Index)
 		"Off             ",
 		"TX Start        ",
 		"TX End          ",
-		"TX Start And End",
+		"TX Start and End",
 	};
 
 	UI_DrawSettingOption(Mode[Index], 0);
@@ -141,29 +141,34 @@ void UI_DrawActions(uint8_t Index)
 		"None        ",
 		"Monitor     ",
 		"Freq Detect ",
-		"Repeat Mode ",
-		"Preset CH   ",
+		"Repeater    ",
+		"Preset Ch   ",
 		"Local Alarm ",
 		"Remote Alarm",
-/*#ifdef ENABLE_NOAA
-		"NOAA        ",
+#ifdef ENABLE_NOAA
+		"MCA MSI     ",
 #else
 		"[DISABLED]  ",
-#endif*/
+#endif
 		"Send Tone   ",
 		"TX Tone     ",
 		"FM Radio    ",
 		"Freq Scanner",
-		"TX Priority ",
+		"Flashlight  ",
+#ifdef ENABLE_AM_FIX
+		"AM Fix      ",
+#else
+		"[DISABLED]  ",
+#endif
 		"VOX         ",
 		"TX Power    ",
 		"Squelch     ",
-		"Dual Standby",
+		"Dual Watch  ",
 		"Backlight   ",
 		"Freq Step   ",
 		"Key Beep    ",
-		"Toggle SList",
-		"DTMF Decode ",
+		"Bank +/- Ch ",
+		"DTMF Input  ",
 		"Dual Display",
 		"TX Frequency",
 		"Lock        ",
@@ -173,7 +178,7 @@ void UI_DrawActions(uint8_t Index)
 		"[DISABLED]  ",
 #endif
 		"Dark Theme  ",
-		"AGC Mode    ",
+		"RF Gain     ",
 #ifdef ENABLE_REGISTER_EDIT
 		"Reg Editor  ",
 #else
@@ -182,7 +187,9 @@ void UI_DrawActions(uint8_t Index)
 		"Mic Gain    ",
 		"Modulation  ",
 		"Bandwidth   ",
-		"TX CTCSS/DCS",// replaces NOAA, remove to establish again
+		"TX CTCSS/DCS",
+		"TX Priority ",
+		"Prohibit TX ",
 	};
 
 	UI_DrawSettingOptionEx(Actions[Index], 12, 0);
@@ -302,67 +309,89 @@ void UI_DrawTxPriority(void)
 
 void UI_DrawFrequencyStep(uint8_t Index)
 {
-	static const char Mode[15][5] = {
-			"0.25K",
-			"1.25K",
-			"2.5K ",
-			"5K   ",
-			"6.25K",
-			"10K  ",
-			"12.5K",
-			"20K  ",
-			"25K  ",
-			"50K  ",
-			"100K ",
-			"500K ",
-			"1M   ",
-			"5M   ",
-			"0.01K",
+	#define MENU_STEPS_COUNT  15
+	#define MENU_STEPS_LENGTH 8
+	static const char Mode[MENU_STEPS_COUNT][MENU_STEPS_LENGTH] = {
+		"10 Hz   ",
+		"250 Hz  ",
+		"1.25 kHz",
+		"2.5 kHz ",
+		"5 kHz   ",
+		"6.25 kHz",
+		"8.33 kHz",
+		"10 kHz  ",
+		"12.5 kHz",
+		"20 kHz  ",
+		"25 kHz  ",
+		"50 kHz  ",
+		"100 kHz ",
+		"500 kHz ",
+		"1 MHz   "
+		//"5 MHz   ",
 	};
 
-	UI_DrawSettingOptionEx(Mode[Index], 5, 0);
-	UI_DrawSettingOptionEx(Mode[(Index + 1) % 14], 5, 1);
+	UI_DrawSettingOptionEx(Mode[Index], MENU_STEPS_LENGTH, 0);
+	UI_DrawSettingOptionEx(Mode[(Index + 1) % MENU_STEPS_COUNT], MENU_STEPS_LENGTH, 1);
 }
 
 void UI_DrawTimer(uint8_t Index)
 {
+	char String[4];
 	uint16_t Timer;
-	
+
+	String[0] = ' ';
+	String[1] = ' ';
+	String[2] = ' ';
+	String[3] = ' ';
+
 	switch (Index) {
 	case 0:
-		UI_DrawSettingOptionEx("Off ", 4, 0);
-		UI_DrawSettingOptionEx("5   ", 4, 1);
+		UI_DrawSettingOptionEx(" Off", 4, 0);
+		UI_DrawSettingOptionEx("   5", 4, 1);
 		break;
 
 	case 1:
-		UI_DrawSettingOptionEx("5   ", 4, 0);
-		UI_DrawSettingOptionEx("10  ", 4, 1);
+		UI_DrawSettingOptionEx("   5", 4, 0);
+		UI_DrawSettingOptionEx("  10", 4, 1);
 		break;
 
 	case 2:
-		UI_DrawSettingOptionEx("10  ", 4, 0);
-		UI_DrawSettingOptionEx("15  ", 4, 1);
+		UI_DrawSettingOptionEx("  10", 4, 0);
+		UI_DrawSettingOptionEx("  15", 4, 1);
 		break;
 
 	case 42:
-		UI_DrawSettingOptionEx("600 ", 4, 0);
-		UI_DrawSettingOptionEx("Off ", 4, 1);
+		UI_DrawSettingOptionEx(" 600", 4, 0);
+		UI_DrawSettingOptionEx(" Off", 4, 1);
 		break;
 
 	default:
-
 		Timer = (Index - 2) * 15;
-		gShortString[2] = ' ';
-		gShortString[3] = ' ';
-		Int2Ascii(Timer, (Timer > 100) ? 3 : 2);
-		UI_DrawSettingOptionEx(gShortString, 4, 0);
-
+		if (Timer < 100) {
+			Int2Ascii(Timer, 2);
+			String[2] = gShortString[0];
+			String[3] = gShortString[1];
+			UI_DrawSettingOptionEx(String, 4, 0);
+		} else {
+			Int2Ascii(Timer, 3);
+			String[1] = gShortString[0];
+			String[2] = gShortString[1];
+			String[3] = gShortString[2];
+			UI_DrawSettingOptionEx(String, 4, 0);
+		}
 		Timer = (Index - 1) * 15;
-		gShortString[2] = ' ';
-		gShortString[3] = ' ';
-		Int2Ascii(Timer, (Timer > 100) ? 3 : 2);
-		UI_DrawSettingOptionEx(gShortString, 4, 1);
-		
+		if (Timer < 100) {
+			Int2Ascii(Timer, 2);
+			String[2] = gShortString[0];
+			String[3] = gShortString[1];
+			UI_DrawSettingOptionEx(String, 4, 1);
+		} else {
+			Int2Ascii(Timer, 3);
+			String[1] = gShortString[0];
+			String[2] = gShortString[1];
+			String[3] = gShortString[2];
+			UI_DrawSettingOptionEx(String, 4, 1);
+		}
 		break;
 	}
 }
@@ -393,8 +422,8 @@ void UI_DrawSettingRepeaterMode(uint8_t Index)
 {
 	static const char Mode[3][14] = {
 		"Off           ",
-		"No RX Subtone ",
-		"Monitor Input ",
+		"No RX TSQL    ",
+		"Monitor input ",
 	};
 
 	UI_DrawSettingOptionEx(Mode[Index], 13, 0);
@@ -441,52 +470,165 @@ void UI_DrawSettingBusyLock(uint8_t Index)
 void UI_DrawSettingScanResume(uint8_t Index)
 {
 	static const char Mode[3][16] = {
-			"Carrier Operated",	// 1
-			"Time Operated   ",	// 2
-			"No Resume       ",	// 3
+			"CO (5.5s)       ",	// 1
+			"TO (2.5s)       ",	// 2
+			"SE (>[]<)       ",	// 3
 	};
 	// Values start at 1 instead of 0 for this setting
 	UI_DrawSettingOption(Mode[Index], 0);
 	UI_DrawSettingOption(Mode[(Index + 1) % 3], 1);
 }
 
-void UI_DrawSettingScanlist(uint8_t Index)
+void UI_DrawSettingAmHysteresis(uint8_t Index)
 {
-	static const char Mode[9][1] = {
-			"1",
-			"2",
-			"3",
-			"4",
-			"5",
-			"6",
-			"7",
-			"8",
-			"*",
+	static const char Mode[5][16] = {
+			"Narrow          ",	// 0
+			"Tight           ",	// 1
+			"Default         ",	// 2
+			"Relaxed         ",	// 3
+			"Wide            ",	// 4
 	};
-
-	UI_DrawSettingOptionEx(Mode[Index], 1, 0);
-	UI_DrawSettingOptionEx(Mode[(Index + 1) % 9], 1, 1);
+	UI_DrawSettingOption(Mode[Index], 0);
+	UI_DrawSettingOption(Mode[(Index + 1) % 5], 1);
 }
 
-void UI_DrawSettingNumList(uint8_t Index, uint8_t Max)
+void UI_DrawSettingVhfCutoff(uint8_t Index)
 {
-	uint8_t Len;
+	static const char Mode[3][16] = {
+			"240 MHz         ",	// 0 - default
+			"280 MHz         ",	// 1 - SATCOM
+			"300 MHz         ",	// 2 - SATCOM
+	};
+	UI_DrawSettingOption(Mode[Index], 0);
+	UI_DrawSettingOption(Mode[(Index + 1) % 3], 1);
+}
 
-	if (Index < 9) {
-		Len = 1;
-	} else if (Index < 99) {
-		Len = 2;
-	} else {
-		Len = 3;
-	}
+void UI_DrawSettingPcbVersion(uint8_t Index)
+{
+	static const char Mode[2][16] = {
+			"PCB 2.0         ",	// 0 - original hardware
+			"PCB 2.1         ",	// 1 - revised hardware
+	};
+	UI_DrawSettingOption(Mode[Index], 0);
+	UI_DrawSettingOption(Mode[(Index + 1) % 2], 1);
+}
 
-	gShortString[1] = ' ';
-	gShortString[2] = ' ';
+// Signed-dB line drawer for the antenna A/B trim menu. Sign handling
+// mirrors ConvertRssiToDbm() in ui/helper.c.
+//
+// Always draws a fixed width of 7 characters, zero-padded to 2 digits.
+// UI_DrawSettingOptionEx() does not clear the row before drawing, so a
+// variable-width value here would leave stale characters behind when a
+// shorter string follows a longer one. This matches the fixed-width
+// convention already used by UI_DrawRxDBM() and the battery voltage
+// display elsewhere in this file.
+static void DrawSignedDbLine(uint8_t Index, uint8_t Line)
+{
+	int16_t dB = (int16_t)Index - 20;
+	uint16_t uAbs = (dB < 0) ? (uint16_t)(-dB) : (uint16_t)dB;
+
+	// Always exactly 2 digits, zero-padded (e.g. "03", not "3").
+	Int2Ascii(uAbs, 2);
+
+	// Shift right one slot to make room for a sign character -- always,
+	// even for positive/zero, so the field width never changes.
+	gShortString[2] = gShortString[1];
+	gShortString[1] = gShortString[0];
+	gShortString[0] = (dB < 0) ? '-' : ' ';
+
+	gShortString[3] = ' ';
+	gShortString[4] = 'd';
+	gShortString[5] = 'B';
+	gShortString[6] = ' ';
 
 	gColorForeground = COLOR_FOREGROUND;
-	Int2Ascii(Index, Len);
-	UI_DrawString(24, 48, gShortString, 3);
-	Int2Ascii((Index + 1) % Max, Len);
-	UI_DrawString(24, 24, gShortString, 3);
+	// Fixed length of 7 on every call, regardless of value -- see the
+	// function comment above; do not make this width-dependent.
+	UI_DrawSettingOptionEx(gShortString, 7, Line);
+}
 
+void UI_DrawSettingAmRssiTrim(uint8_t Index)
+{
+	DrawSignedDbLine(Index, 0);
+	DrawSignedDbLine((Index + 1) % 41, 1);
+}
+
+// Scan Start / Scan Finish: MHz.decimal display, e.g. "128.10000" for
+// 128.1MHz. Raw is in the same x10Hz units as RX.Frequency, so the
+// fractional part (Raw % 100000) already carries the full 5-digit / 10Hz
+// precision those units support. Fixed width every call (same reasoning
+// as DrawSignedDbLine above -- see its comment for why variable-width
+// redraws cause stale characters to linger on screen). Single
+// non-scrolling value, no "next" preview line.
+void UI_DrawScanRangeMHz(uint32_t Raw)
+{
+	char Frac[5];
+	uint8_t i;
+
+	if (Raw > 130000000UL) {
+		Raw = 130000000UL;
+	}
+
+	// Grab the 5 fractional digits first -- the Int2Ascii call below for
+	// the whole-MHz part reuses/overwrites gShortString, so they'd
+	// otherwise get clobbered before we can place them (same reason
+	// DrawCss above computes CTCSS/DCS digits before rearranging them).
+	Int2Ascii(Raw % 100000UL, 5);
+	for (i = 0; i < 5; i++) {
+		Frac[i] = gShortString[i];
+	}
+	Int2Ascii(Raw / 100000UL, 3);
+	gShortString[3] = '.';
+	for (i = 0; i < 5; i++) {
+		gShortString[4 + i] = Frac[i];
+	}
+	gColorForeground = COLOR_FOREGROUND;
+	UI_DrawString(24, 48, gShortString, 9);
+}
+
+// Live preview while typing -- pString holds up to 8 raw digit values
+// (0-9), or '-' placeholders for not-yet-typed positions (same convention
+// as UI_DrawChannelNumber). The decimal point sits at a fixed position
+// after the 3rd digit regardless of how many digits have been typed so
+// far, matching the confirmed-value layout above.
+void UI_DrawScanRangeDigits(const char *pString)
+{
+	uint8_t i;
+
+	for (i = 0; i < 3; i++) {
+		gShortString[i] = (pString[i] == '-') ? '-' : ('0' + pString[i]);
+	}
+	gShortString[3] = '.';
+	for (i = 3; i < 8; i++) {
+		gShortString[i + 1] = (pString[i] == '-') ? '-' : ('0' + pString[i]);
+	}
+	gColorForeground = COLOR_FOREGROUND;
+	UI_DrawString(24, 48, gShortString, 9);
+}
+
+void UI_DrawSettingScanlist(uint8_t Index)
+{
+	static const char Mode[9][8] = {
+			"Bank 1  ",
+			"Bank 2  ",
+			"Bank 3  ",
+			"Bank 4  ",
+			"Bank 5  ",
+			"Bank 6  ",
+			"Bank 7  ",
+			"Bank 8  ",
+			"All     ",
+	};
+
+	UI_DrawSettingOptionEx(Mode[Index], 8, 0);
+	UI_DrawSettingOptionEx(Mode[(Index + 1) % 9], 8, 1);
+}
+
+void UI_DrawSettingMicGain(uint8_t Index)
+{
+	gColorForeground = COLOR_FOREGROUND;
+	Int2Ascii(Index, 2);
+	UI_DrawString(24, 48, gShortString, 2);
+	Int2Ascii((Index + 1) % 32, 2);
+	UI_DrawString(24, 24, gShortString, 2);
 }

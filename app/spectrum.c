@@ -16,19 +16,31 @@
 
 #include "misc.h"
 #include "app/spectrum.h"
+#ifdef ENABLE_REGISTER_EDIT
+#include "app/regedit.h"
+#endif
+#ifdef ENABLE_AM_FIX
+#include "task/am-fix.h"
+#endif
 #include "app/radio.h"
 #include "driver/bk4819.h"
 #include "driver/delay.h"
 #include "driver/key.h"
 #include "driver/pins.h"
-#include "driver/speaker.h"
+#include "driver/speaker.h"						   
 #include "helper/helper.h"
 #include "helper/inputbox.h"
 #include "radio/channels.h"
 #include "radio/settings.h"
+#include "radio/scheduler.h"
+#include "task/screen.h"
+#include "task/timeout.h"
+#include "app/fm.h"
+#include "driver/bk1080.h"
 #include "ui/gfx.h"
 #include "ui/helper.h"
 #include "ui/main.h"
+#include "ui/vfo.h"
 
 #ifdef UART_DEBUG
 	#include "driver/uart.h"
@@ -47,10 +59,25 @@ uint32_t CurrentFreqChangeStep;
 uint8_t CurrentStepCountIndex;
 uint8_t CurrentStepCount;
 uint16_t CurrentScanDelay;
-uint16_t RssiValue[128] = {0};
+uint16_t RssiValue[160] = {0};
 uint16_t SquelchLevel;
 uint8_t bExit;
 uint8_t bRXMode;
+
+#ifdef ENABLE_AM_FIX
+// Saves whatever AmFixEnabled was set to right before entering Spectrum,
+// so it can be silently restored on exit. RAM-only, deliberately not
+// persisted -- this is a transient session override, not a user
+// preference change (no SETTINGS_SaveGlobals() call anywhere involving
+// this variable). AM Fix genuinely can't function while parked in
+// Spectrum/Reg Edit's own blocking loops (Task_AM_fix never runs), so
+// rather than leave that as an invisible side-effect, it's forced off
+// explicitly on entry -- the existing "AF ON" vs battery-voltage display
+// in UI_DrawVoltage() already keys off this same flag, so no separate UI
+// change is needed for it to show correctly.
+static uint8_t bAmFixWasEnabled;
+#endif
+
 uint8_t bResetSquelch;
 uint8_t bRestartScan;
 uint8_t bFilterEnabled;
@@ -65,19 +92,30 @@ uint8_t bHold;
 KEY_t Key;
 KEY_t LastKey = KEY_NONE;
 
+// FM broadcast band detection (10Hz units: 88.0-108.0 MHz)
+#define IS_FM_BAND(f)     ((f) >= 8800000U && (f) <= 10800000U)
+// Convert spectrum 10Hz freq to BK1080 units (0.1 MHz)
+#define TO_BK1080_FREQ(f) ((uint16_t)((f) / 10000U))
+
 uint8_t SpectrumColorMode;
 uint8_t COLOR_R;
 uint8_t COLOR_G;
 uint8_t COLOR_B;
 uint16_t COLOR_BAR;
 
+#define BLACKLIST_MAX 50
+static uint32_t Blacklist[BLACKLIST_MAX];
+static uint8_t BlacklistCount = 0;
 
-static const char StepStrings[][5] = {
+#define SPECTRUM_STEPS_COUNT 15
+static const char StepStrings[SPECTRUM_STEPS_COUNT][5] = {
+	"0.01K",
 	"0.25K",
 	"1.25K",
-	"02.5K",
-	"05.0K",
+	"2.50K",
+	"5.00K",
 	"6.25K",
+	"8.33K",
 	"10.0K",
 	"12.5K",
 	"20.0K",
@@ -85,8 +123,8 @@ static const char StepStrings[][5] = {
 	"50.0K",
 	"100.K",
 	"500.K",
-	"1.00M",
-	"5.00M"
+	"1.00M"
+	//"5.00M"
 };
 
 static const char Mode[4][2] = {
@@ -108,9 +146,9 @@ void DrawCurrentFreq(uint16_t Color) {
 	Int2Ascii(CurrentFreq, 8);
 	ShiftShortStringRight(2, 7);
 	gShortString[3] = '.';
-	UI_DrawSmallString(54, 70, gShortString, 8);// Main Frequency
-	gColorForeground = COLOR_GREY;
-	UI_DrawSmallString(106, 70, Mode[CurrentModulation], 2);// AM, FM, SB
+	UI_DrawSmallString(54, 72, gShortString, 8);// Main Frequency
+	gColorForeground = COLOR_FOREGROUND;
+	UI_DrawSmallString(106, 72, Mode[CurrentModulation], 2);// AM, FM, SB
 }
 
 void DrawLabels(void) {
@@ -130,10 +168,10 @@ void DrawLabels(void) {
 	gColorForeground = COLOR_FOREGROUND;
 	gShortString[2] = ' ';
 	Int2Ascii(CurrentStepCount, (CurrentStepCount < 100) ? 2 : 3);
-	UI_DrawSmallString(2, 70, gShortString, 3);//Step 16-128
+	UI_DrawSmallString(2, 72, gShortString, 3);//Step 16-160
 	
-	gColorForeground = COLOR_RGB(31, 41, 0);
-	UI_DrawSmallString(2, 60, StepStrings[CurrentFreqStepIndex], 5);//Step Index
+	gColorForeground = COLOR_FOREGROUND;
+	UI_DrawSmallString(2, 62, StepStrings[CurrentFreqStepIndex], 5);//Step Index
 
 	gColorForeground = COLOR_FOREGROUND;
 	Int2Ascii(CurrentScanDelay, (CurrentScanDelay < 10) ? 1 : 2);
@@ -141,17 +179,17 @@ void DrawLabels(void) {
 		gShortString[1] = gShortString[0];
 		gShortString[0] = ' ';
 	}
-	UI_DrawSmallString(128, 70, gShortString, 2);// Srch delay
+	UI_DrawSmallString(128, 72, gShortString, 2);// Srch delay
 
 	gColorForeground = COLOR_FOREGROUND;
-	UI_DrawSmallString(146, 70, (bFilterEnabled) ? "F" : "X", 1);//Filter
-	gColorForeground = COLOR_RGB(31, 41, 0);
-	UI_DrawSmallString(128, 60, (bNarrow) ? "12.5K" : "25.0K", 5);// Bandwidth N/W
+	UI_DrawSmallString(146, 72, (bFilterEnabled) ? "F" : "X", 1);//Filter
+	gColorForeground = COLOR_FOREGROUND;
+	UI_DrawSmallString(146, 62, (bNarrow) ? "N" : "W", 1);// Bandwidth N/W
 	
-	gColorForeground = COLOR_GREY;
+	gColorForeground = COLOR_FOREGROUND;
 	UI_DrawSmallString(61, 86, (bHold) ? "<HOLD>" : "SEARCH", 6);// Hold/Srch
 
-	gColorForeground = COLOR_GREY;
+	gColorForeground = COLOR_FOREGROUND;
 
 	Int2Ascii(CurrentFreqChangeStep / 10, 5);
 	ShiftShortStringRight(0, 5);
@@ -169,8 +207,8 @@ void SetFreqMinMax(void) {
 }
 
 void SetStepCount(void) {
-	CurrentStepCount = 128 >> CurrentStepCountIndex;
-	BarWidth = 128 / CurrentStepCount;
+	CurrentStepCount = 160 >> CurrentStepCountIndex;
+	BarWidth = 160 / CurrentStepCount;
 }
 
 void IncrementStepIndex(void) {
@@ -181,7 +219,14 @@ void IncrementStepIndex(void) {
 }
 
 void IncrementFreqStepIndex(void) {
-	CurrentFreqStepIndex = (CurrentFreqStepIndex + 1) % 10;
+	CurrentFreqStepIndex = (CurrentFreqStepIndex + 1) % SPECTRUM_STEPS_COUNT;
+	CurrentFreqStep = FREQUENCY_GetStep(CurrentFreqStepIndex);
+	SetFreqMinMax();
+	DrawLabels();
+}
+
+void DecrementFreqStepIndex(void) {
+	CurrentFreqStepIndex = (CurrentFreqStepIndex - 1) % SPECTRUM_STEPS_COUNT;
 	CurrentFreqStep = FREQUENCY_GetStep(CurrentFreqStepIndex);
 	SetFreqMinMax();
 	DrawLabels();
@@ -256,6 +301,11 @@ uint16_t GetAdjustedLevel(uint16_t Level, uint16_t Low, uint16_t High, uint16_t 
 }
 
 void JumpToVFO(void) {
+	DISPLAY_Fill(0, 159, 0, 96, COLOR_BACKGROUND);
+	gColorForeground = COLOR_FOREGROUND;
+	UI_DrawSmallString(24, 44, "COPYING FREQ TO VFO", 19);
+	DELAY_WaitMS(600);
+
 	if (gSettings.WorkMode) {
 		gSettings.WorkMode = FALSE;
 		CHANNELS_LoadVfoMode();
@@ -270,10 +320,8 @@ void JumpToVFO(void) {
 
 	SETTINGS_SaveGlobals();
 	gVfoState[gSettings.CurrentVfo].bIsNarrow = bNarrow;
-
-	// fixme: when previously in channel mode, the VFO name is overrided by the channel name
+	DISPLAY_Fill(0, 159, 0, 96, COLOR_BACKGROUND); // clear full screen before VFO draws
 	CHANNELS_UpdateVFOFreq(CurrentFreq);
-	
 	bExit = TRUE;
 }
 
@@ -289,15 +337,15 @@ void DrawSpectrum(uint16_t ActiveBarColor) {
 	uint8_t BarX;
 	
 	BarLow = RssiLow - 2;
-	if ((RssiHigh - RssiLow) < 40) {
-		BarHigh = RssiLow + 40;
+	if ((RssiHigh - RssiLow) < 46) {
+		BarHigh = RssiLow + 46;
 	} else {
 		BarHigh = RssiHigh + 5;
 	}
 
 //Bars
 	for (uint8_t i = 0; i < CurrentStepCount; i++) {
-		BarX = 16 + (i * BarWidth);
+		BarX = 0 + (i * BarWidth);
 		Power = GetAdjustedLevel(RssiValue[i], BarLow, BarHigh, BarScale);
 		SquelchPower = GetAdjustedLevel(SquelchLevel, BarLow, BarHigh, BarScale);
 		
@@ -308,7 +356,7 @@ void DrawSpectrum(uint16_t ActiveBarColor) {
 				COLOR_G = (Power * 4) - 1;
 				COLOR_B = (21 - Power) * 4 - 1;
 			}
-			if(Power > 20 && Power <= 40) {
+			if(Power > 20 && Power <= 46) {
 				COLOR_R = (Power - 20) * 4 - 1;
 				COLOR_G = (41 - Power) * 4 - 1;
 				COLOR_B = 0;
@@ -364,18 +412,40 @@ void DrawSpectrum(uint16_t ActiveBarColor) {
 	
 	//Squelch Line
 	Power = GetAdjustedLevel(SquelchLevel, BarLow, BarHigh, BarScale);
-	DISPLAY_DrawRectangle1(16, BarY + Power, 1, 128, COLOR_GREY);
+	DISPLAY_DrawRectangle1(0, BarY + Power, 1, 160, COLOR_FOREGROUND);
 
 	gColorForeground = ActiveBarColor;
 	ConvertRssiToDbm(RssiValue[CurrentFreqIndex]);
-	UI_DrawSmallString(52, 60, gShortString, 4);//dBM active frequency
+	UI_DrawSmallString(52, 62, gShortString, 4);//dBM active frequency
 
-	gColorForeground = COLOR_GREY;
+	gColorForeground = COLOR_FOREGROUND;
 	ConvertRssiToDbm(SquelchLevel);
-	UI_DrawSmallString(82, 60, gShortString, 4);//dBM squelch
+	UI_DrawSmallString(82, 62, gShortString, 4);//dBM squelch
 }
 
 void StopSpectrum(void) {
+
+	// wait for key to be fully released before returning to main firmware
+	while (KEY_GetButton() != KEY_NONE) {
+		DELAY_WaitMS(10);
+	}
+	DELAY_WaitMS(200); // debounce
+
+	gScreenMode = SCREEN_MAIN; // ensure main firmware key handler is restored
+
+#ifdef ENABLE_AM_FIX
+	// Silently restore whatever AM Fix was set to before entering Spectrum.
+	// Deliberately overrides any Key-5 toggling done inside a nested Reg
+	// Edit screen during the session -- AM Fix couldn't act on that
+	// change while parked in Spectrum anyway (see bAmFixWasEnabled
+	// comment), so restoring the pre-session value is the least
+	// surprising outcome. No RestoreGainSettings() call needed here --
+	// Task_AM_fix will pick this back up and start adjusting gain
+	// correctly on its own, once the scheduler resumes.
+	if (bAmFixWasEnabled) {
+		gExtendedSettings.AmFixEnabled = true;
+	}
+#endif
 
 	SCREEN_TurnOn();
 
@@ -391,8 +461,32 @@ void StopSpectrum(void) {
 	UI_DrawMain(false);
 }
 
+bool IsBlacklisted(uint32_t Freq) {
+	for (uint8_t i = 0; i < BlacklistCount; i++) {
+		if (Blacklist[i] == Freq)
+			return true;
+	}
+	return false;
+}
+
+void BlacklistCurrentFreq(void) {
+	if (IsBlacklisted(CurrentFreq))
+		return; // already in list
+	if (BlacklistCount < BLACKLIST_MAX) {
+		Blacklist[BlacklistCount++] = CurrentFreq;
+		RssiValue[CurrentFreqIndex] = 0; // immediately suppress the bar
+	}
+}
+
+void ClearBlacklist(void) {
+	BlacklistCount = 0;
+}
+
 void CheckKeys(void) {
 	Key = KEY_GetButton();
+	if (Key != KEY_NONE) {
+		SCREEN_TurnOn();      // any keypress wakes backlight
+	}
 	if (Key == LastKey && Key != KEY_NONE) {
 		if (bRXMode) {
 			KeyHoldTimer += 10;
@@ -400,14 +494,14 @@ void CheckKeys(void) {
 			KeyHoldTimer++;
 		}
 	}
-	if (Key != LastKey || KeyHoldTimer >= 50) {
+	if (Key != LastKey || KeyHoldTimer >= 100) {
 		KeyHoldTimer = 0;
 		switch (Key) {
 			case KEY_NONE:
 				break;
 			case KEY_EXIT:
 				bExit = TRUE;
-				return;
+				return;		
 			case KEY_MENU:
 				JumpToVFO();
 				return;
@@ -429,6 +523,7 @@ void CheckKeys(void) {
 				IncrementStepIndex();
 				break;
 			case KEY_2:
+				ClearBlacklist();
 				break;
 			case KEY_3:
 				IncrementModulation();
@@ -437,19 +532,35 @@ void CheckKeys(void) {
 				IncrementFreqStepIndex();
 				break;
 			case KEY_5:
-				ChangeSpectrumColor();
+				BlacklistCurrentFreq();
 				break;
 			case KEY_6:
-				ChangeSquelchLevel(TRUE);
+				ChangeSpectrumColor();
 				break;
 			case KEY_7:
 				bHold ^= 1;
 				DrawLabels();
 				break;
 			case KEY_8:
+				#ifdef ENABLE_REGISTER_EDIT
+				APP_RegEdit(1);
+				// wait for EXIT key to be fully released before returning to spectrum
+				while (KEY_GetButton() != KEY_NONE) {
+					DELAY_WaitMS(10);
+				}
+				DELAY_WaitMS(200); // debounce
+				// redraw spectrum chrome
+				DISPLAY_Fill(0, 159, 1, 96, COLOR_BACKGROUND);
+				DISPLAY_DrawRectangle0(0, 82, 160, 1, gColorForeground);
+				DISPLAY_DrawRectangle0(0, 11, 160, 1, gColorForeground);
+				UI_DrawStatusIcon(139, ICON_BATTERY, true, COLOR_FOREGROUND);
+				UI_DrawBattery();
+				DrawLabels();
+				LastKey = KEY_NONE; // prevent EXIT bleed-through
+				bRestartScan = TRUE;
+				#endif
 				break;
 			case KEY_9:
-				ChangeSquelchLevel(FALSE);
 				break;
 			case KEY_0:
 				ToggleFilter();
@@ -467,39 +578,105 @@ void CheckKeys(void) {
 	}
 }
 
+void CheckSideKeys(void) {
+	// Self-contained counters -- KEY_Side1Counter/KEY_Side2Counter are not
+	// incremented by the ISR outside SCREEN_MAIN, so we count independently.
+	static uint16_t S1Counter   = 0;
+	static uint16_t S2Counter   = 0;
+	static uint16_t S1RepeatTimer = 0;
+	static uint16_t S2RepeatTimer = 0;
+	static bool     S1WasHeld   = false;
+	static bool     S2WasHeld   = false;
+	static bool     S1WasDown   = false;
+	static bool     S2WasDown   = false;
+
+	bool S1Pressed = !gpio_input_data_bit_read(GPIOF, BOARD_GPIOF_KEY_SIDE1);
+	bool S2Pressed = !gpio_input_data_bit_read(GPIOA, BOARD_GPIOA_KEY_SIDE2);
+
+	// Accumulate while held
+	if (S1Pressed) { S1Counter++; S1WasDown = true; S1RepeatTimer++; }
+	else           { S1Counter = 0; S1RepeatTimer = 0; }
+	if (S2Pressed) { S2Counter++; S2WasDown = true; S2RepeatTimer++; }
+	else           { S2Counter = 0; S2RepeatTimer = 0; }
+
+	// --- Long press: fire once while still held ---
+	if (S1Pressed && S1Counter > 1000 && !S1WasHeld) {
+		S1WasHeld = true;
+		SCREEN_TurnOn();
+		// TODO: bind S1 long-press action here
+	}
+	if (S2Pressed && S2Counter > 1000 && !S2WasHeld) {
+		S2WasHeld = true;
+		SCREEN_TurnOn();
+		// TODO: bind S2 long-press action here
+	}
+
+	// --- Short press: fire on first press then repeat while held (matches KEY_6/9) ---
+	// Initial fire after debounce, then repeat every ~50 ticks
+	if (S1Pressed && !S1WasHeld) {
+		if (S1RepeatTimer == 5 || (S1RepeatTimer > 5 && (S1RepeatTimer % 10) == 0)) {
+			SCREEN_TurnOn();
+			ChangeSquelchLevel(TRUE);          // S1: squelch up
+		}
+	}
+	if (S2Pressed && !S2WasHeld) {
+		if (S2RepeatTimer == 5 || (S2RepeatTimer > 5 && (S2RepeatTimer % 10) == 0)) {
+			SCREEN_TurnOn();
+			ChangeSquelchLevel(FALSE);         // S2: squelch down
+		}
+	}
+
+	// --- Cleanup on release ---
+	if (!S1Pressed && S1WasDown) {
+		S1WasHeld = false;
+		S1WasDown = false;
+	}
+	if (!S2Pressed && S2WasDown) {
+		S2WasHeld = false;
+		S2WasDown = false;
+	}
+}
+
 void Spectrum_StartAudio(void) {
 	gReceivingAudio = true;
 
-	gpio_bits_set(GPIOA, BOARD_GPIOA_LED_GREEN);
-	gRadioMode = RADIO_MODE_RX;
-	OpenAudio(bNarrow, CurrentModulation);
-	if (CurrentModulation == 0) {
-		BK4819_WriteRegister(0x4D, 0xA080);
-		BK4819_WriteRegister(0x4E, 0x6F7C);
-	}
-
-	if (CurrentModulation > 0) {
-		// AM, SSB
-		BK4819_EnableScramble(false);
-		BK4819_EnableCompander(false);
-		// Set bit 4 of register 73 (Auto Frequency Control Disable)
-		uint16_t reg_73 = BK4819_ReadRegister(0x73);
-		BK4819_WriteRegister(0x73, reg_73 | 0x10U);
-		if (CurrentModulation > 1) { // if SSB
-			BK4819_WriteRegister(0x43, 0b0010000001011000); // Filter 6.25KHz
-			BK4819_WriteRegister(0x37, 0b0001011000001111);
-			BK4819_WriteRegister(0x3D, 0b0010101101000101);
-			BK4819_WriteRegister(0x48, 0b0000001110101000);
-		}
+	if (IS_FM_BAND(CurrentFreq)) {
+		// FM broadcast band — BK1080 for proper WFM, no LED/gRadioMode change
+		// so green LED and heartbeat behave correctly between signals
+		BK1080_PowerOn();
+		FM_Tune(TO_BK1080_FREQ(CurrentFreq));
+		FM_SetVolume(15);
+		SPEAKER_TurnOn(SPEAKER_OWNER_FM);
 	} else {
-		// FM
-		BK4819_EnableScramble(false);
-		BK4819_EnableCompander(true);
-		uint16_t reg_73 = BK4819_ReadRegister(0x73);
-		BK4819_WriteRegister(0x73, reg_73 & ~0x10U);
-		BK4819_SetAFResponseCoefficients(false, true, gCalibration.RX_3000Hz_Coefficient);
+		gRadioMode = RADIO_MODE_RX;
+		gpio_bits_set(GPIOA, BOARD_GPIOA_LED_GREEN);
+		OpenAudio(bNarrow, CurrentModulation);
+		if (CurrentModulation == 0) {
+			BK4819_WriteRegister(0x4D, 0xA080);
+			BK4819_WriteRegister(0x4E, 0x6F7C);
+		}
+		if (CurrentModulation > 0) {
+			// AM, SSB
+			BK4819_EnableScramble(false);
+			BK4819_EnableCompander(false);
+			uint16_t reg_73 = BK4819_ReadRegister(0x73);
+			BK4819_WriteRegister(0x73, reg_73 | 0x10U);
+			if (CurrentModulation > 1) { // if SSB
+				BK4819_WriteRegister(0x43, 0b0010000001011000); // Filter 6.25KHz
+				BK4819_WriteRegister(0x37, 0b0001011000001111);
+				BK4819_WriteRegister(0x3D, 0b0010101101000101);
+				BK4819_WriteRegister(0x48, 0b0000001110101000);
+			}
+		} else {
+			// FM via BK4819
+			BK4819_EnableScramble(false);
+			BK4819_EnableCompander(true);
+			uint16_t reg_73 = BK4819_ReadRegister(0x73);
+			BK4819_WriteRegister(0x73, reg_73 & ~0x10U);
+			BK4819_SetAFResponseCoefficients(false, true, gCalibration.RX_3000Hz_Coefficient);
+		}
+		SPEAKER_TurnOn(SPEAKER_OWNER_RX);
 	}
-	SPEAKER_TurnOn(SPEAKER_OWNER_RX);
 }
 
 void RunRX(void) {
@@ -509,8 +686,18 @@ void RunRX(void) {
 	while(RssiValue[CurrentFreqIndex] > SquelchLevel) {
 		RssiValue[CurrentFreqIndex] = BK4819_GetRSSI();
 		CheckKeys();
-		if (bExit){
-			RADIO_EndAudio();
+		CheckSideKeys();
+		Task_CheckDisplayTimeout();
+		if (bExit) {
+			if (IS_FM_BAND(CurrentFreq)) {
+				FM_SetVolume(0);
+				SPEAKER_TurnOff(SPEAKER_OWNER_FM);
+				gpio_bits_set(GPIOC, BOARD_GPIOC_BK1080_SEN);
+			} else {
+				RADIO_EndAudio();
+				gpio_bits_reset(GPIOA, BOARD_GPIOA_LED_GREEN);
+				gRadioMode = RADIO_MODE_QUIET;
+			}
 			return;
 		}
 		DrawCurrentFreq(COLOR_GREEN);
@@ -518,7 +705,15 @@ void RunRX(void) {
 		DELAY_WaitMS(5);
 	}
 
-	RADIO_EndAudio();
+	if (IS_FM_BAND(CurrentFreq)) {
+		FM_SetVolume(0);
+		SPEAKER_TurnOff(SPEAKER_OWNER_FM);
+		gpio_bits_set(GPIOC, BOARD_GPIOC_BK1080_SEN);
+	} else {
+		RADIO_EndAudio();
+		gpio_bits_reset(GPIOA, BOARD_GPIOA_LED_GREEN);
+		gRadioMode = RADIO_MODE_QUIET;
+	}
 	bRXMode = FALSE;
 }
 
@@ -529,44 +724,10 @@ void Spectrum_Loop(void) {
 	bResetSquelch = TRUE;
 	bRestartScan = FALSE;
 
-    DISPLAY_DrawRectangle0(0, 82, 160, 1, gSettings.BorderColor);
-	DISPLAY_DrawRectangle0(0, 11, 160, 1, gSettings.BorderColor);
+    DISPLAY_DrawRectangle0(0, 82, 160, 1, gColorForeground);
+	DISPLAY_DrawRectangle0(0, 11, 160, 1, gColorForeground);
 
-	gColorForeground = COLOR_FOREGROUND;
-	UI_DrawSmallString(14, 14, ".", 1);
-	UI_DrawSmallString(78, 14, ".", 1);
-	UI_DrawSmallString(141, 14, ".", 1);
-	
-	gColorForeground = COLOR_GREY;
-    UI_DrawSmallString(6, 15, ".", 1);
-	UI_DrawSmallString(6, 35, ".", 1);
-    UI_DrawSmallString(6, 55, ".", 1);
-	
-	UI_DrawSmallString(11, 15, ".", 1);
-	UI_DrawSmallString(11, 20, ".", 1);
-	UI_DrawSmallString(11, 25, ".", 1);
-	UI_DrawSmallString(11, 30, ".", 1);
-	UI_DrawSmallString(11, 35, ".", 1);
-	UI_DrawSmallString(11, 40, ".", 1);
-	UI_DrawSmallString(11, 45, ".", 1);
-	UI_DrawSmallString(11, 50, ".", 1);
-    UI_DrawSmallString(11, 55, ".", 1);
-	
-	UI_DrawSmallString(144, 15, ".", 1);
-	UI_DrawSmallString(144, 20, ".", 1);
-	UI_DrawSmallString(144, 25, ".", 1);
-	UI_DrawSmallString(144, 30, ".", 1);
-	UI_DrawSmallString(144, 35, ".", 1);
-	UI_DrawSmallString(144, 40, ".", 1);
-	UI_DrawSmallString(144, 45, ".", 1);
-	UI_DrawSmallString(144, 50, ".", 1);
-    UI_DrawSmallString(144, 55, ".", 1);
-	
-	UI_DrawSmallString(149, 15, ".", 1);
-	UI_DrawSmallString(149, 35, ".", 1);
-    UI_DrawSmallString(149, 55, ".", 1);
-
-	UI_DrawStatusIcon(139, ICON_BATTERY, true, COLOR_GREY);
+	UI_DrawStatusIcon(139, ICON_BATTERY, true, COLOR_FOREGROUND);
 	UI_DrawBattery();
 
 	DrawLabels();
@@ -588,22 +749,28 @@ void Spectrum_Loop(void) {
 
 			DELAY_WaitMS(CurrentScanDelay);
 
-			RssiValue[i] = BK4819_GetRSSI();
+			if (IsBlacklisted(FreqToCheck)) {
+				RssiValue[i] = 0;
+			} else {
+				RssiValue[i] = BK4819_GetRSSI();
 
-			if (RssiValue[i] < RssiLow) {
-				RssiLow = RssiValue[i];
-			} else if (RssiValue[i] > RssiHigh) {
-				RssiHigh = RssiValue[i];
-			}
+				if (RssiValue[i] < RssiLow) {
+					RssiLow = RssiValue[i];
+				} else if (RssiValue[i] > RssiHigh) {
+					RssiHigh = RssiValue[i];
+				}
 
-			if (RssiValue[i] > RssiValue[CurrentFreqIndex] && !bHold) {
-				CurrentFreqIndex = i;
-				CurrentFreq = FreqToCheck;
+				if (RssiValue[i] > RssiValue[CurrentFreqIndex] && !bHold) {
+					CurrentFreqIndex = i;
+					CurrentFreq = FreqToCheck;
+				}
 			}
 
 			FreqToCheck += CurrentFreqStep;
 
 			CheckKeys();
+			CheckSideKeys();
+			Task_CheckDisplayTimeout();
 			if (bExit){
 				return;
 			}
@@ -617,6 +784,7 @@ void Spectrum_Loop(void) {
 		if (RssiValue[CurrentFreqIndex] > SquelchLevel) {
 			BK4819_set_rf_frequency(CurrentFreq, TRUE);
 			DELAY_WaitMS(CurrentScanDelay);
+			SCREEN_TurnOn();      // squelch break wakes backlight
 			RunRX();
 		}
 
@@ -631,20 +799,33 @@ void APP_Spectrum(void) {
 	bExit = FALSE;
 	bRXMode = FALSE;
 
+#ifdef ENABLE_AM_FIX
+	// Force off for the whole Spectrum session (including any Reg Edit
+	// screen reached from within it) -- see bAmFixWasEnabled comment above
+	// for why. Restored automatically in StopSpectrum() on the way out.
+	bAmFixWasEnabled = gExtendedSettings.AmFixEnabled;
+	if (bAmFixWasEnabled) {
+		gExtendedSettings.AmFixEnabled = false;
+		BK4819_RestoreGainSettings();
+	}
+#endif
+
 	FreqCenter = gVfoState[gSettings.CurrentVfo].RX.Frequency;
 	bNarrow = gVfoState[gSettings.CurrentVfo].bIsNarrow;
 	CurrentModulation = gVfoState[gSettings.CurrentVfo].gModulationType;
 	CurrentFreqStepIndex = gSettings.FrequencyStep;
 	CurrentFreqStep = FREQUENCY_GetStep(CurrentFreqStepIndex);
-	CurrentStepCountIndex = STEPS_128;
+	//Defaults	   
+	CurrentStepCountIndex = STEPS_160;
 	CurrentScanDelay = 4;
 	bFilterEnabled = TRUE;
 	SquelchLevel = 0;
-	BarScale = 40;
-	BarY = 15;
+	BarScale = 46;
+	BarY = 12;
 	bHold = 0;
 	
 	SpectrumColorMode = 0;
+	// blacklist persists for the session - use KEY_2 to clear manually
 
 	SetStepCount();
 	SetFreqMinMax(); 
@@ -654,6 +835,15 @@ void APP_Spectrum(void) {
 	}
 	
 	DISPLAY_Fill(0, 159, 1, 96, COLOR_BACKGROUND);
+	SCREEN_TurnOn();          // start backlight timer on entry
+	DELAY_WaitMS(300); // let the key pressed for entering the spectrum app be un-pressed
+
+	// One-time BK1080 init if entering in FM broadcast band.
+	// Switching between FM broadcast and other bands requires a reboot.
+	if (IS_FM_BAND(FreqCenter)) {
+		BK1080_Init();
+	}
+
 	Spectrum_Loop();
 
 	StopSpectrum();

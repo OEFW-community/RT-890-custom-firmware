@@ -32,29 +32,25 @@ static void PlayStartupTone(void)
 	if (gSettings.StartupRingTone) {
 		BEEP_Enable();
 	#ifdef MOTO_STARTUP_TONE
-		BEEP_SetFrequency(260);
-		SPEAKER_TurnOn(SPEAKER_OWNER_SYSTEM);
-		BK4819_SetAF(BK4819_AF_BEEP);
-		DELAY_WaitMS(250);
-		// the secret sauce - two tones at once.
-		// this requires dtmf abuse.
-		gDTMF_Playing = true;
-		gStartupSoundPlaying = true;
-		DTMF_PlayTone(0);
-		DELAY_WaitMS(1);
-		BEEP_SetFrequency(398);
-		BEEP_SetTone2Frequency(788);
-		DELAY_WaitMS(200);
-		BEEP_SetFrequency(662);
-		BEEP_SetTone2Frequency(998);
-		DELAY_WaitMS(200);
-		BEEP_SetFrequency(528);
-		BEEP_SetTone2Frequency(1571);
-		DELAY_WaitMS(200);
-		DTMF_Disable();
-		gDTMF_Playing = false;
-		gStartupSoundPlaying = false;
-
+        // CEIII Play the 5 tones!
+		BEEP_SetFrequency(784);
+        SPEAKER_TurnOn(SPEAKER_OWNER_SYSTEM);
+		DELAY_WaitMS(125);
+        // Note 1: G5 (~784 Hz)
+        BEEP_SetFrequency(784);
+        DELAY_WaitMS(300);
+        // Note 2: A5 (~880 Hz)
+        BEEP_SetFrequency(880);
+        DELAY_WaitMS(300);
+        // Note 3: F5 (~698 Hz)
+        BEEP_SetFrequency(698);
+        DELAY_WaitMS(300);
+        // Note 4: F4 (~349 Hz - octave down from F5)
+        BEEP_SetFrequency(349);
+        DELAY_WaitMS(450);
+        // Note 5: C5 (~523 Hz - long final note)
+        BEEP_SetFrequency(523);
+        DELAY_WaitMS(900);
 	#else
 		BEEP_SetFrequency(1000);
 		SPEAKER_TurnOn(SPEAKER_OWNER_SYSTEM);
@@ -92,4 +88,3 @@ void UI_DrawBoot(void)
 
 	DISPLAY_Fill(0, 159, 0, 96, COLOR_BACKGROUND);
 }
-

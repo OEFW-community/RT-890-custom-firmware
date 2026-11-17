@@ -1,20 +1,24 @@
 TARGET = firmware
 
-UART_DEBUG			?= 0
-MOTO_STARTUP_TONE		?= 1
-ENABLE_ALT_SQUELCH		?= 1
-ENABLE_NOAA			?= 0
-ENABLE_SPECTRUM			?= 1
+UART_DEBUG				 ?= 0
+MOTO_STARTUP_TONE		 ?= 0
+ENABLE_AM_FIX			 ?= 1
+ENABLE_ALT_SQUELCH		 ?= 0
+ENABLE_NOAA				 ?= 1
+ENABLE_SPECTRUM			 ?= 1
 # Spectrum presets - 1.4 kB
-ENABLE_SPECTRUM_PRESETS		?= 0
+ENABLE_SPECTRUM_PRESETS	 ?= 0
 # FM radio = 2.6 kB
-ENABLE_FM_RADIO			?= 1
+ENABLE_FM_RADIO			 ?= 1
 # Register Editor = .5 kB
-ENABLE_REGISTER_EDIT	?= 1
+ENABLE_REGISTER_EDIT	 ?= 1
 # Space saving options
-ENABLE_LTO			?= 0
-ENABLE_OPTIMIZED		?= 1
+ENABLE_LTO				 ?= 0
+ENABLE_OPTIMIZED		 ?= 1
 ENABLE_SLOWER_RSSI_TIMER ?= 1
+ENABLE_833_RETUNE        ?= 1
+ENABLE_KEEP_MONITOR_MODE_UP_DN	?= 1
+# PCB_VER_2_1 ?= 0  # Retired: now runtime-selectable via PCB Revision menu item
 
 OBJS =
 # Startup files
@@ -50,6 +54,7 @@ OBJS += driver/uart.o
 
 # "App" logic
 OBJS += app/css.o
+OBJS += app/flashlight.o
 ifeq ($(ENABLE_FM_RADIO), 1)
 	OBJS += app/fm.o
 endif
@@ -84,6 +89,9 @@ OBJS += radio/settings.o
 
 # Tasks
 OBJS += task/alarm.o
+ifeq ($(ENABLE_AM_FIX), 1)
+        OBJS += task/am-fix.o
+endif
 OBJS += task/battery.o
 OBJS += task/cursor.o
 OBJS += task/encrypt.o
@@ -191,6 +199,12 @@ endif
 ifeq ($(MOTO_STARTUP_TONE),1)
 	CFLAGS += -DMOTO_STARTUP_TONE
 endif
+ifeq ($(ENABLE_AM_FIX),1)
+	CFLAGS += -DENABLE_AM_FIX
+endif
+# ifeq ($(PCB_VER_2_1),1)  # Retired: runtime-selectable
+# 	CFLAGS += -DPCB_VER_2_1
+#endif
 ifeq ($(ENABLE_ALT_SQUELCH),1)
 	CFLAGS += -DENABLE_ALT_SQUELCH
 endif
@@ -214,6 +228,12 @@ ifeq ($(ENABLE_FM_RADIO), 1)
 endif
 ifeq ($(ENABLE_SLOWER_RSSI_TIMER), 1)
 	CFLAGS += -DENABLE_SLOWER_RSSI_TIMER
+endif
+ifeq ($(ENABLE_833_RETUNE), 1)
+	CFLAGS += -DENABLE_833_RETUNE
+endif
+ifeq ($(ENABLE_KEEP_MONITOR_MODE_UP_DN), 1)
+	CFLAGS += -DENABLE_KEEP_MONITOR_MODE_UP_DN
 endif
 
 all: $(TARGET)

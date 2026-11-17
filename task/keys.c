@@ -14,12 +14,14 @@
  *     limitations under the License.
  */
 
+#include "app/flashlight.h"
 #include "app/fm.h"
 #include "app/menu.h"
 #include "app/radio.h"
 #include "driver/audio.h"
 #include "driver/beep.h"
 #include "driver/key.h"
+#include "driver/delay.h"
 #include "helper/dtmf.h"
 #include "helper/helper.h"
 #include "helper/inputbox.h"
@@ -76,7 +78,7 @@ static void VFO_AppendDigit(char Digit)
 		INPUTBOX_Pad(0, 10);
 	}
 	gInputBox[gInputBoxWriteIndex++] = Digit;
-	gInputBoxWriteIndex %= 7U;
+	gInputBoxWriteIndex %= 8U;
 	UI_DrawFrequencyEx(gInputBox, gSettings.CurrentVfo, gFrequencyReverse);
 	if (gInputBoxWriteIndex == 0) {
 		CHANNELS_UpdateVFO();
@@ -138,7 +140,9 @@ static void MAIN_KeyHandler(KEY_t Key)
 			if (gFM_Mode < FM_MODE_PLAY) {
 				if (!gReceptionMode) {
 					if (!gScannerMode) {
+#ifndef ENABLE_KEEP_MONITOR_MODE_UP_DN
 						RADIO_CancelMode();
+#endif
 						if (gSettings.WorkMode) {
 							CHANNELS_NextChannelMr(Key, false);
 							SETTINGS_SaveGlobals();
@@ -151,9 +155,8 @@ static void MAIN_KeyHandler(KEY_t Key)
 							RADIO_Tune(gSettings.CurrentVfo);
 						}
 					} else {
-						// TODO: Logic is correct but doesn't make sense
-						// gSettings.StandbyArea = (Key + 1) & 1;
-						// SETTINGS_SaveGlobals();
+						// TODO: revisit whether gManualScanDirection should instead
+						// derive from gSettings.StandbyArea as originally intended.
 						gManualScanDirection = (Key == KEY_DOWN);
 						if (gRadioMode== RADIO_MODE_RX) {
 							gForceScan = true;
@@ -262,6 +265,11 @@ static void MAIN_KeyHandler(KEY_t Key)
 
 static void HandlerShort(KEY_t Key)
 {
+	if (gFlashlightMode) {
+		FLASHLIGHT_Toggle();
+		return;
+	}
+
 	if (gSettings.Lock || gRadioMode == RADIO_MODE_TX || (gReceptionMode && Key != KEY_UP && Key != KEY_DOWN)) {
 		return;
 	}
@@ -280,7 +288,7 @@ static void HandlerShort(KEY_t Key)
 	case SCREEN_SETTING:
 		MENU_SettingKeyHandler(Key);
 		break;
-		default:
+	default:
 		break;
 	}
 }
@@ -378,6 +386,7 @@ static void HandlerLong(KEY_t Key)
 			do {
 				if (gScreenMode == SCREEN_MENU) {
 					MENU_Next(Key);
+					DELAY_WaitMS(70);
 				} else if (gScreenMode == SCREEN_SETTING) {
 					MENU_ScrollSetting(Key);
 				}
@@ -434,7 +443,7 @@ void Task_CheckKeyPad(void)
 			if (KEY_KeyCounter > 10 && gRadioMode == RADIO_MODE_TX && !gEnableLocalAlarm && !gDTMF_Playing) {
 				gDTMF_Playing = true;
 				DTMF_PlayTone(Key);
-			} else if (KEY_KeyCounter > 1000) {
+			} else if (KEY_KeyCounter > 500) { // OEM 1000
 				KEY_LongPressed = true;
 				gLockTimer = 0;
 				HandlerLong(Key);

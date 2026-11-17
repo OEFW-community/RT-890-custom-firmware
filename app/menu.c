@@ -29,6 +29,7 @@
 #include "misc.h"
 #include "radio/hardware.h"
 #include "radio/settings.h"
+#include "task/am-fix.h"
 #include "task/cursor.h"
 #include "task/keyaction.h"
 #include "task/sidekeys.h"
@@ -39,84 +40,99 @@
 #include "ui/version.h"
 
 static const char Menu[][14] = {
-	"Startup Logo  ",
-	"Cell Voltage  ",
-	"Startup Tone  ",
-	"Startup Text  ",
-	"Voice Prompt  ",
-	"Key Beep      ",
-	"TX Tone       ",
-	"Dual Display  ",
-	"TX Priority   ",
-	"Power Save    ",
-	"Freq Step     ",
+	// --- GROUP 1: Radio / Frequency ---
 	"Squelch Level ",
-	"Squelch RSSI  ",
-	"Squelch Noise ",
-	"Squelch Glitch",
-	"Backlight     ",
-	"Lock Time     ",
-	"Time Of Talk  ",
-	"VOX Level     ",
-	"VOX Delay     ",
-  /*"NOAA Monitor  ", remove comment to establish again*/
-	"FM Standby    ",
-	"Tail Tone     ",
-	"Scan >>>      ",
-	"FSK ID        ",
+	"Freq Step     ",
+	"Modulation    ",
+	"Bandwidth     ",
+	"AM Hysteresis ",
+	"Antenna Trim  ",
+	"Reset Ant Trim",
+	"VHF Cutoff    ",
+	"Mic Gain      ",
+	"TX Power      ",
+	"TX Priority   ",
 	"Repeater Mode ",
-	"Scan Resume   ",
-	"Scan LED      ",
+	"Tail Tone     ",
+	"TX Tone       ",
+	// --- GROUP 2: Squelch / Codes / Security ---
 	"CTCSS/DCS     ",
 	"RX CTCSS/DCS  ",
 	"TX CTCSS/DCS  ",
-	"TX Power      ",
-	"Mic Gain      ",
-	"Modulation    ",
-	"Bandwidth     ",
-	"List To Scan  ",
-	"Ch In List 1  ",
-	"Ch In List 2  ",
-	"Ch In List 3  ",
-	"Ch In List 4  ",
-	"Ch In List 5  ",
-	"Ch In List 6  ",
-	"Ch In List 7  ",
-	"Ch In List 8  ",
 	"Busy Lock     ",
 	"Invert Speech ",
 	"DCS Encrypt   ",
 	"Mute Code     ",
+	"Prohibit TX   ",
+	// --- GROUP 3: Scanning ---
+	"Scan Start    ",
+	"Scan Finish   ",
+	"Scan Resume   ",
+	"Scan >Dir<    ",
+	"Bank-> Scan   ",
+	"Ch -> Bank 1  ",
+	"Ch -> Bank 2  ",
+	"Ch -> Bank 3  ",
+	"Ch -> Bank 4  ",
+	"Ch -> Bank 5  ",
+	"Ch -> Bank 6  ",
+	"Ch -> Bank 7  ",
+	"Ch -> Bank 8  ",
+	// --- GROUP 4: Channel Management ---
 	"Channel Name  ",
 	"Save Channel  ",
 	"Delete Channel",
-	"Side 1 Long   ",
-	"Side 1 Short  ",
-	"Side 2 Long   ",
-	"Side 2 Short  ",
-	"Key 0 Long    ",
-	"Key 1 Long    ",
-	"Key 2 Long    ",
-	"Key 3 Long    ",
-	"Key 4 Long    ",
-	"Key 5 Long    ",
-	"Key 6 Long    ",
-	"Key 7 Long    ",
-	"Key 8 Long    ",
-	"Key 9 Long    ",
-	"Key * Long    ",
-	"Key # Long    ",
-	"Key Menu Long ",
-	"Key Exit Long ",
-	"Reset Keys    ",
-	"DTMF Delay    ",
-	"DTMF Interval ",
+	// --- GROUP 5: VOX ---
+	"VOX Level     ",
+	"VOX Delay     ",
+	// --- GROUP 6: DTMF ---
 	"DTMF Mode     ",
 	"DTMF Select   ",
+	"DTMF Delay    ",
+	"DTMF Interval ",
 	"DTMF Display  ",
+	// --- GROUP 7: Key Assignments ---
+	"Side Key 1 LP ",
+	"Side Key 1 SP ",
+	"Side Key 2 LP ",
+	"Side Key 2 SP ",
+	"Key 0 LP      ",
+	"Key 1 LP      ",
+	"Key 2 LP      ",
+	"Key 3 LP      ",
+	"Key 4 LP      ",
+	"Key 5 LP      ",
+	"Key 6 LP      ",
+	"Key 7 LP      ",
+	"Key 8 LP      ",
+	"Key 9 LP      ",
+	"Key * LP      ",
+	"Key # LP      ",
+	"Key Menu LP   ",
+	"Key Exit LP   ",
+	"Reset Keys    ",
+	// --- GROUP 8: Display / UI ---
+	"Dual Display  ",
 	"Dark Theme    ",
-	"Initialize    ",
-	"Version       ",
+	"Startup Logo  ",
+	"Startup Text  ",
+	"Cell Voltage  ",
+	"Backlight     ",
+	"Scan LED      ",
+	"LED Heartbeat ",
+	"Startup Tone  ",
+	"Voice Prompt  ",
+	"Key Beep      ",
+	"FSK ID        ",
+	// --- GROUP 9: Power / Radio Behaviour ---
+	"FM Standby    ",
+	"Power Save    ",
+	"Lock Time     ",
+	"Time of Talk  ",
+	// --- GROUP 10: System ---
+	"PCB Revision  ",
+	"Reboot        ",
+	"Firmware      ",
 };
 
 static const ChannelInfo_t EmptyChannel = {
@@ -138,14 +154,18 @@ static const ChannelInfo_t EmptyChannel = {
 
 	._0x11 = 0xFF,
 	.Scramble = 0xFF,
-	.IsInscanList = 0xFF,
+	.IsInscanList = 0x00,	// was 0xFF - same bug as VfoTemplate, see
+				// CHANNELS_UpdateVFOFreq's IsInscanList reset
 	._0x14 = 0xFF,
 	._0x15 = 0xFF,
 	.Name = "          ",
 };
 
 static uint16_t gSettingMaxValues;
-static uint16_t gSettingCurrentValue;
+static uint32_t gSettingCurrentValue;	// widened from uint16_t: Scan Start/Finish
+					// now store a full raw x10Hz value (up
+					// to 130000000) here as the live/typed
+					// value, not just a 0-999 MHz count
 static uint8_t gSettingCodeType;
 static uint16_t gSettingCode;
 static uint8_t EditSize;
@@ -308,6 +328,47 @@ static void CHANNEL_KeyHandler(KEY_t Key)
 	}
 }
 
+// Scan Start / Scan Finish: 8-digit MHz.decimal entry (3 whole-MHz
+// digits + 5 fractional, e.g. 128.10000), same pattern as CHANNELS_UpdateVFO's
+// existing raw 8-digit VFO frequency entry -- the typed digits ARE the raw
+// x10Hz units directly (no decimal key involved; the decimal point is a
+// cosmetic display insert only, see UI_DrawScanRangeMHz/Digits). This also
+// matches the full 5-digit fractional precision the raw units already carry
+// (100000 raw units per MHz), where the old 3-digit entry only reached whole
+// MHz. gSettingCurrentValue holds the typed raw value as a live preview;
+// MENU_AcceptSetting validates it against the other bound on confirm.
+static void DrawEditScanRange(void)
+{
+	uint32_t Raw;
+	uint8_t i;
+
+	Raw = 0;
+	for (i = 0; i < 8; i++) {
+		Raw = (Raw * 10) + gInputBox[i];
+	}
+	gInputBoxWriteIndex = 0;
+	INPUTBOX_Pad(0, 10);
+	if (Raw <= 130000000UL) {
+		gSettingCurrentValue = Raw;
+	}
+	UI_DrawScanRangeMHz(gSettingCurrentValue);
+}
+
+static void SCANRANGE_KeyHandler(KEY_t Key)
+{
+	if (Key != KEY_STAR && Key != KEY_HASH) {
+		if (gInputBoxWriteIndex == 0) {
+			INPUTBOX_Pad(0, '-');
+		}
+		gInputBox[gInputBoxWriteIndex++] = (char)Key;
+		gInputBoxWriteIndex %= 8;
+		UI_DrawScanRangeDigits(gInputBox);
+		if (gInputBoxWriteIndex == 0) {
+			DrawEditScanRange();
+		}
+	}
+}
+
 static void MUTE_KeyHandler(uint8_t Key)
 {
 	if (Key < 10) {
@@ -322,6 +383,8 @@ static void MUTE_KeyHandler(uint8_t Key)
 		}
 	}
 }
+
+//
 
 void MENU_SetMaxCssValues(void)
 {
@@ -345,6 +408,7 @@ void MENU_AcceptSetting(void)
 {
 	uint16_t Channel;
 	uint8_t i;
+	uint32_t raw;
 
 	switch (gMenuIndex) {
 	case MENU_STARTUP_LOGO:
@@ -439,7 +503,7 @@ void MENU_AcceptSetting(void)
 		gSettings.VoxDelay = (gSettingCurrentValue + gSettingIndex) % gSettingMaxValues;
 		SETTINGS_SaveGlobals();
 		break;
-#ifdef ENABLE_NOAA
+#if 0 /* NOAA Monitor menu item disabled -- gSettings.NoaaAlarm is still read in task/idle.c */
 	case MENU_NOAA_MONITOR:
 		gSettings.NoaaAlarm = gSettingIndex;
 		SETTINGS_SaveGlobals();
@@ -508,26 +572,10 @@ void MENU_AcceptSetting(void)
 		CHANNELS_SaveVfo();
 		break;
 
-	case MENU_MIC_GAIN:
+case MENU_MIC_GAIN:
 		gExtendedSettings.MicGainLevel = (gSettingCurrentValue + gSettingIndex) % gSettingMaxValues;
 		SETTINGS_SaveGlobals();
 		BK4819_SetMicSensitivityTuning();
-		break;
-
-	case MENU_SQUELCH_RSSI:
-	case MENU_SQUELCH_NOISE:
-	case MENU_SQUELCH_GLITCH:
-		if (gMenuIndex == MENU_SQUELCH_RSSI) {
-			gExtendedSettings.SqRSSIBase = (gSettingCurrentValue + gSettingIndex) % gSettingMaxValues;
-		} else if (gMenuIndex == MENU_SQUELCH_NOISE) {
-			gExtendedSettings.SqNoiseBase = (gSettingCurrentValue + gSettingIndex) % gSettingMaxValues;
-		} else {
-			gExtendedSettings.SqGlitchBase = (gSettingCurrentValue + gSettingIndex) % gSettingMaxValues;
-		}
-		SETTINGS_SaveGlobals();
-		BK4819_SetSquelchGlitch(gMainVfo->bIsNarrow);
-		BK4819_SetSquelchNoise(gMainVfo->bIsNarrow);
-		BK4819_SetSquelchRSSI(gMainVfo->bIsNarrow);
 		break;
 
 	case MENU_MODULATION:
@@ -599,7 +647,7 @@ void MENU_AcceptSetting(void)
 			gVfoState[gSettings.CurrentVfo].bIs24Bit = 0;
 		} else if (gSettingCurrentValue == 1) {
 			gVfoState[gSettings.CurrentVfo].bMuteEnabled = 1;
-			// TODO: Feels like there should be a bIs24Bit assignment??
+			// TODO: bIs24Bit is not assigned in this branch -- confirm whether that's intentional.
 		} else {
 			gVfoState[gSettings.CurrentVfo].bMuteEnabled = 1;
 			gVfoState[gSettings.CurrentVfo].bIs24Bit = 1;
@@ -618,7 +666,7 @@ void MENU_AcceptSetting(void)
 	case MENU_SAVE_CH:
 		CHANNELS_SaveChannel((gSettingCurrentValue + gSettingIndex) % gSettingMaxValues, &gVfoState[gSettings.CurrentVfo]);
 		CHANNELS_CheckFreeChannels();
-		// TODO: This "if" block doesn't exist in the original, but there's a bug where VFO A is cleared by the previous line
+		// TODO: added to work around a bug where the previous line clears VFO A; not present in the original firmware.
 		if (gSettings.WorkMode) {
 			CHANNELS_LoadChannel(gSettings.VfoChNo[0], 0);
 		} else {
@@ -646,6 +694,29 @@ void MENU_AcceptSetting(void)
 			CHANNELS_LoadChannel(gSettings.CurrentVfo ? 999 : 1000, !gSettings.CurrentVfo);
 		}
 		RADIO_Retune();
+		break;
+
+	case MENU_SCAN_START:
+		// gSettingCurrentValue already holds the typed raw x10Hz value
+		// directly (8-digit MHz.decimal entry -- see DrawEditScanRange).
+		// Validate before committing -- must stay within the real
+		// hardware range, and must stay below the current Finish bound
+		// (a Start >= Finish range would make VFO scanning malfunction).
+		// Reject silently back to the current stored value rather than
+		// saving something broken.
+		raw = gSettingCurrentValue;
+		if (raw >= 1000000 && raw < gExtendedSettings.ScanRangeFinish) {
+			gExtendedSettings.ScanRangeStart = raw;
+			SETTINGS_SaveGlobals();
+		}
+		break;
+
+	case MENU_SCAN_FINISH:
+		raw = gSettingCurrentValue;
+		if (raw <= 130000000 && raw > gExtendedSettings.ScanRangeStart) {
+			gExtendedSettings.ScanRangeFinish = raw;
+			SETTINGS_SaveGlobals();
+		}
 		break;
 
 	case MENU_K1_LONG:
@@ -705,6 +776,59 @@ void MENU_AcceptSetting(void)
 		UI_SetColors(gExtendedSettings.DarkMode);
 		DrawStatusBar();
 		MENU_Redraw(true);
+		break;
+
+	case MENU_PROHIBIT_TX:
+		gExtendedSettings.TxProhibit = gSettingIndex;
+		SETTINGS_SaveGlobals();
+		break;
+
+	case MENU_LED_HEARTBEAT:
+		gExtendedSettings.LedHeartbeat = gSettingIndex;
+		SETTINGS_SaveGlobals();
+		break;
+
+	case MENU_AM_HYSTERESIS:
+		gExtendedSettings.AmFixHysteresis = (gSettingCurrentValue + gSettingIndex) % gSettingMaxValues;
+		SETTINGS_SaveGlobals();
+		break;
+
+	case MENU_VHF_CUTOFF:
+		gExtendedSettings.VhfCutoff = (gSettingCurrentValue + gSettingIndex) % gSettingMaxValues;
+		SETTINGS_SaveGlobals();
+		break;
+
+	case MENU_PCB_VERSION:
+		{
+			uint8_t newVal;
+			newVal = (uint8_t)((gSettingCurrentValue + gSettingIndex) % gSettingMaxValues);
+			if (newVal != gExtendedSettings.PcbVersion) {
+				gExtendedSettings.PcbVersion = newVal;
+				SETTINGS_SaveGlobals();
+				HARDWARE_Reboot();
+			}
+		}
+		break;
+
+	case MENU_AM_RSSI_TRIM:
+		// UI represents -20..+20dB as an unsigned 0..40 index (bias +20) to
+		// fit the existing "(value + step) % max" scroll convention used
+		// throughout this menu system, which assumes unsigned ranges.
+		// Persisted to flash -- no reboot needed, am-fix.c reads it live.
+		gExtendedSettings.AmFixRssiTrimDb =
+			(int8_t)((gSettingCurrentValue + gSettingIndex) % gSettingMaxValues) - 20;
+		SETTINGS_SaveGlobals();
+		break;
+
+	case MENU_AM_RSSI_TRIM_RESET:
+		// Explicit confirm-to-reset, same pattern as MENU_INITIALIZE /
+		// MENU_KEYS_RESET below. Deliberately not automatic on erased
+		// flash -- see settings.h for why (-1 is a valid calibration
+		// value too, can't reliably tell it apart from "never set").
+		if (gSettingIndex == 1) {
+			gExtendedSettings.AmFixRssiTrimDb = 0;
+			SETTINGS_SaveGlobals();
+		}
 		break;
 
 	case MENU_INITIALIZE:
@@ -835,7 +959,7 @@ void MENU_DrawSetting(void)
 		DISPLAY_Fill(0, 159, 1, 55, COLOR_BACKGROUND);
 		UI_DrawLevel(gSettingCurrentValue);
 		break;
-#ifdef ENABLE_NOAA
+#if 0 /* NOAA Monitor menu item disabled -- see note above */
 	case MENU_NOAA_MONITOR:
 		gSettingIndex = gSettings.NoaaAlarm;
 		UI_DrawToggle();
@@ -916,27 +1040,12 @@ void MENU_DrawSetting(void)
 		DISPLAY_Fill(0, 159, 1, 55, COLOR_BACKGROUND);
 		UI_DrawSettingTxPower();
 		break;
-	
+		
 	case MENU_MIC_GAIN:
 		gSettingCurrentValue = gExtendedSettings.MicGainLevel;
 		gSettingMaxValues = 32;
 		DISPLAY_Fill(0, 159, 1, 55, COLOR_BACKGROUND);
-		UI_DrawSettingNumList(gSettingCurrentValue, gSettingMaxValues);
-		break;
-	
-	case MENU_SQUELCH_RSSI:
-	case MENU_SQUELCH_NOISE:
-	case MENU_SQUELCH_GLITCH:
-		if (gMenuIndex == MENU_SQUELCH_RSSI) {
-			gSettingCurrentValue = gExtendedSettings.SqRSSIBase;
-		} else if (gMenuIndex == MENU_SQUELCH_NOISE) {
-			gSettingCurrentValue = gExtendedSettings.SqNoiseBase;
-		} else {
-			gSettingCurrentValue = gExtendedSettings.SqGlitchBase;
-		}
-		gSettingMaxValues = 255;
-		DISPLAY_Fill(0, 159, 1, 55, COLOR_BACKGROUND);
-		UI_DrawSettingNumList(gSettingCurrentValue, gSettingMaxValues);							 
+		UI_DrawSettingMicGain(gSettingCurrentValue);
 		break;
 
 	case MENU_MODULATION:
@@ -1028,6 +1137,22 @@ void MENU_DrawSetting(void)
 		UI_DrawChannelName(gSettingCurrentValue);
 		break;
 
+	case MENU_SCAN_START:
+		// gSettingMaxValues = 0 -- pure digit entry, nothing to scroll
+		// (UP/DOWN are harmlessly no-ops here, see MENU_ScrollSetting).
+		gSettingMaxValues = 0;
+		gSettingCurrentValue = gExtendedSettings.ScanRangeStart;
+		DISPLAY_Fill(0, 159, 1, 55, COLOR_BACKGROUND);
+		UI_DrawScanRangeMHz(gSettingCurrentValue);
+		break;
+
+	case MENU_SCAN_FINISH:
+		gSettingMaxValues = 0;
+		gSettingCurrentValue = gExtendedSettings.ScanRangeFinish;
+		DISPLAY_Fill(0, 159, 1, 55, COLOR_BACKGROUND);
+		UI_DrawScanRangeMHz(gSettingCurrentValue);
+		break;
+
 	case MENU_K1_LONG:
 	case MENU_K1_SHORT:
 	case MENU_K2_LONG:
@@ -1095,6 +1220,51 @@ void MENU_DrawSetting(void)
 
 	case MENU_DARK_MODE:
 		gSettingIndex = gExtendedSettings.DarkMode;
+		UI_DrawToggle();
+		break;
+
+	case MENU_PROHIBIT_TX:
+		gSettingIndex = gExtendedSettings.TxProhibit;
+		UI_DrawToggle();
+		break;
+
+	case MENU_LED_HEARTBEAT:
+		gSettingIndex = gExtendedSettings.LedHeartbeat;
+		UI_DrawToggle();
+		break;
+
+	case MENU_AM_HYSTERESIS:
+		gSettingCurrentValue = (gExtendedSettings.AmFixHysteresis < 5) ? gExtendedSettings.AmFixHysteresis : 0;
+		gSettingMaxValues = 5;
+		DISPLAY_Fill(0, 159, 1, 55, COLOR_BACKGROUND);
+		UI_DrawSettingAmHysteresis(gSettingCurrentValue);
+		break;
+
+	case MENU_VHF_CUTOFF:
+		gSettingCurrentValue = (gExtendedSettings.VhfCutoff < 3) ? gExtendedSettings.VhfCutoff : 0;
+		gSettingMaxValues = 3;
+		DISPLAY_Fill(0, 159, 1, 55, COLOR_BACKGROUND);
+		UI_DrawSettingVhfCutoff(gSettingCurrentValue);
+		break;
+
+	case MENU_PCB_VERSION:
+		gSettingCurrentValue = gExtendedSettings.PcbVersion & 1;
+		gSettingMaxValues = 2;
+		DISPLAY_Fill(0, 159, 1, 55, COLOR_BACKGROUND);
+		UI_DrawSettingPcbVersion(gSettingCurrentValue);
+		break;
+
+	case MENU_AM_RSSI_TRIM:
+		{
+			int16_t biased = (int16_t)gExtendedSettings.AmFixRssiTrimDb + 20;
+			gSettingCurrentValue = (biased >= 0 && biased <= 40) ? (uint8_t)biased : 20;
+		}
+		gSettingMaxValues = 41;
+		DISPLAY_Fill(0, 159, 1, 55, COLOR_BACKGROUND);
+		UI_DrawSettingAmRssiTrim(gSettingCurrentValue);
+		break;
+
+	case MENU_AM_RSSI_TRIM_RESET:
 		UI_DrawToggle();
 		break;
 
@@ -1193,8 +1363,14 @@ void MENU_SettingKeyHandler(uint8_t Key)
 					|| gMenuIndex == MENU_RX_CTCSS_DCS
 					|| gMenuIndex == MENU_TX_CTCSS_DCS
 					|| gMenuIndex == MENU_SCAN_RESUME
+					|| gMenuIndex == MENU_AM_HYSTERESIS
+					|| gMenuIndex == MENU_VHF_CUTOFF
+					|| gMenuIndex == MENU_PCB_VERSION
+				|| gMenuIndex == MENU_AM_RSSI_TRIM
 					|| gMenuIndex == MENU_SAVE_CH
-					|| gMenuIndex == MENU_DELETE_CH) {
+					|| gMenuIndex == MENU_DELETE_CH
+					|| gMenuIndex == MENU_SCAN_START
+					|| gMenuIndex == MENU_SCAN_FINISH) {
 				MENU_Redraw(true);
 			} else {
 				MENU_Redraw(false);
@@ -1233,6 +1409,11 @@ void MENU_SettingKeyHandler(uint8_t Key)
 		case MENU_SAVE_CH:
 		case MENU_DELETE_CH:
 			CHANNEL_KeyHandler(Key);
+			break;
+
+		case MENU_SCAN_START:
+		case MENU_SCAN_FINISH:
+			SCANRANGE_KeyHandler(Key);
 			break;
 		}
 		BEEP_Play(740, 2, 100);
@@ -1314,18 +1495,28 @@ void MENU_ScrollSetting(uint8_t Key)
 		UI_DrawSettingScanResume(gSettingCurrentValue);
 		break;
 
+	case MENU_AM_HYSTERESIS:
+		UI_DrawSettingAmHysteresis(gSettingCurrentValue);
+		break;
+
+	case MENU_VHF_CUTOFF:
+		UI_DrawSettingVhfCutoff(gSettingCurrentValue);
+		break;
+
+	case MENU_PCB_VERSION:
+		UI_DrawSettingPcbVersion(gSettingCurrentValue);
+		break;
+
+	case MENU_AM_RSSI_TRIM:
+		UI_DrawSettingAmRssiTrim(gSettingCurrentValue);
+		break;
+
 	case MENU_TX_POWER:
 		UI_DrawSettingTxPower();
 		break;
 
 	case MENU_MIC_GAIN:
-		UI_DrawSettingNumList(gSettingCurrentValue, 32);
-		break;
-
-	case MENU_SQUELCH_RSSI:
-	case MENU_SQUELCH_NOISE:
-	case MENU_SQUELCH_GLITCH:
-		UI_DrawSettingNumList(gSettingCurrentValue, 255);
+		UI_DrawSettingMicGain(gSettingCurrentValue);
 		break;
 
 	case MENU_MODULATION:
@@ -1422,11 +1613,10 @@ void MENU_PlayAudio(uint8_t MenuID)
 	case MENU_TOT:           ID = 0x19; break;
 	case MENU_VOX_LEVEL:     ID = 0x1A; break;
 	case MENU_VOX_DELAY:     ID = 0x1B; break;
-#ifdef ENABLE_NOAA
+#if 0 /* NOAA Monitor menu item disabled -- see note above */
 	case MENU_NOAA_MONITOR:  ID = 0x1C; break;
 #endif
 	case MENU_FM_STANDBY:    ID = 0x1D; break;
-
 	case MENU_TAIL_TONE:     ID = 0x1F; break;
 	case MENU_SCAN_DIR:      ID = 0x20; break;
 	case MENU_PERSONAL_ID:   ID = 0x21; break;

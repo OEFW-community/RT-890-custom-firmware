@@ -48,8 +48,14 @@ void UI_DrawSettingModulation(uint8_t Index);
 void UI_DrawSettingBandwidth(void);
 void UI_DrawSettingBusyLock(uint8_t Index);
 void UI_DrawSettingScanlist(uint8_t Index);
-void UI_DrawSettingNumList(uint8_t Index, uint8_t Max);
+void UI_DrawSettingMicGain(uint8_t Index);
 void UI_DrawSettingScanResume(uint8_t Index);
+void UI_DrawSettingAmHysteresis(uint8_t Index);
+void UI_DrawSettingVhfCutoff(uint8_t Index);
+void UI_DrawSettingPcbVersion(uint8_t Index);
+void UI_DrawSettingAmRssiTrim(uint8_t Index);
+void UI_DrawScanRangeMHz(uint32_t Raw);
+void UI_DrawScanRangeDigits(const char *pString);
 
 #endif
 

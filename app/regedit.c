@@ -19,11 +19,13 @@
 #include "driver/bk4819.h"
 #include "driver/key.h"
 #include "helper/helper.h"
+#include "task/am-fix.h"
 #include "ui/gfx.h"
 #include "ui/helper.h"
 #include "ui/main.h"
 #include "driver/delay.h"
 #include "misc.h"
+#include "radio/settings.h"
 
 #ifdef UART_DEBUG
 	#include "driver/uart.h"
@@ -31,12 +33,12 @@
 #endif
 
 static const Registers RegisterTable[] = {
-    {"LNAS ", 0x10, 8,   0b11, 1},
-    {"LNA  ", 0x10, 5,  0b111, 1},
-    {"PGA  ", 0x10, 0,  0b111, 1},
-    {"MIX  ", 0x10, 3,   0b11, 1},
+    {"LNAS ", 0x10, 8, 0b11, 1},
+    {"LNA  ", 0x10, 5, 0b111, 1},
+	{"MIX  ", 0x10, 3, 0b11, 1},
+    {"PGA  ", 0x10, 0, 0b111, 1},
     {"BW   ", 0x43, 12, 0b111, 1},
-    {"WEAK ", 0x43, 9,  0b111, 1},
+    {"WEAK ", 0x43, 9, 0b111, 1},
 };
 
 static const uint8_t RegCount = sizeof(RegisterTable) / sizeof(RegisterTable[0]);
@@ -45,7 +47,7 @@ static uint8_t bExit;
 static uint8_t RegIndex = 1;
 static uint16_t RegValue;
 static uint16_t SettingValue;
-static uint8_t CurrentReg;
+static uint8_t CurrentReg; 
 
 void ChangeRegValue(uint8_t bUp) {
 
@@ -94,6 +96,12 @@ void RegEditCheckKeys(void) {
             case KEY_3:
 				ChangeRegValue(true);
 				break;
+			case KEY_5:
+				/*#ifdef ENABLE_AM_FIX
+				RADIO_CancelMode();
+				AM_FIX_ToggleEnabled();
+				#endif*/
+				break;
 			default:
 				break;
 		}
@@ -101,11 +109,9 @@ void RegEditCheckKeys(void) {
 	}
 }
 
-void APP_RegEdit(void) {
+void APP_RegEdit(uint8_t bFromSpectrum) {
 
     uint16_t ActiveGainReg;
-
-	RADIO_EndAudio();  // Just in case audio is open
 
 	DISPLAY_Fill(0, 159, 1, 96, COLOR_BACKGROUND);
 
@@ -115,7 +121,16 @@ void APP_RegEdit(void) {
     while (1) {
         RegEditCheckKeys();
 
-        if (bExit) {
+        if (bExit){
+			if (bFromSpectrum) {
+				// wait for EXIT key release before handing back to spectrum
+				while (KEY_GetButton() != KEY_NONE) {
+					DELAY_WaitMS(10);
+				}
+				gScreenMode = SCREEN_MAIN; // reset so spectrum exit works cleanly
+				DISPLAY_Fill(0, 159, 1, 96, COLOR_BACKGROUND);
+				return;
+			}
 			gScreenMode = SCREEN_MAIN;
             UI_DrawMain(false);
             return;
@@ -134,7 +149,7 @@ void APP_RegEdit(void) {
         SettingValue = RegValue >> RegisterTable[RegIndex].Offset;
         SettingValue &= RegisterTable[RegIndex].Mask;
 
-        gColorForeground = COLOR_RGB(31, 41, 0);
+        gColorForeground = COLOR_FOREGROUND;
         UI_DrawString(50, 30, RegisterTable[RegIndex].Name, 5);
         gShortString[1] = ' ';
         Int2Ascii(SettingValue, RegisterTable[RegIndex].DiplayDigits);

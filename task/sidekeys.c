@@ -14,6 +14,7 @@
  *     limitations under the License.
  */
 
+#include "app/flashlight.h"
 #include "app/radio.h"
 #include "app/fm.h"
 #include "driver/beep.h"
@@ -37,7 +38,7 @@ void Task_CheckSideKeys(void)
 
 	SCHEDULER_ClearTask(TASK_CHECK_SIDE_KEYS);
 
-	// ??? Such a specific number
+	// Sentinel: any value >= 4 means "no side-key slot pressed" (see check below).
 	gSlot = 6;
 
 	if (!gpio_input_data_bit_read(GPIOF, BOARD_GPIOF_KEY_SIDE1) && KEY_Side1Counter > 1000) {

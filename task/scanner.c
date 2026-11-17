@@ -5,15 +5,16 @@
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
- *     Unless required by applicable law or agreed to in writing, software
- *     distributed under the License is distributed on an "AS IS" BASIS,
- *     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *     See the License for the specific language governing permissions and
- *     limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
+#include "app/css.h"
 #include "app/radio.h"
 #include "bsp/gpio.h"
 #include "driver/key.h"
@@ -47,7 +48,14 @@ void Task_Scanner(void) {
 			CHANNELS_NextChannelVfo(gManualScanDirection ? KEY_DOWN : KEY_UP);
 			RADIO_Tune(gSettings.CurrentVfo);
 		}
-		SCANNER_Countdown = 50;// was 20 slowed down to enable working search function
+		
+		// Dynamic delay optimization based on programmed channel tone
+		if (gVfoState[gSettings.CurrentVfo].RX.CodeType != CODE_TYPE_OFF) {
+			SCANNER_Countdown = 250; // Sweet spot for CTCSS/DCS detection
+		} else {
+			SCANNER_Countdown = 65;  // Restores your preferred fast VFO/carrier speed
+		}
+
 		if (gExtendedSettings.ScanBlink) {
 			gpio_bits_flip(GPIOA, BOARD_GPIOA_LED_GREEN);
 		}
@@ -65,4 +73,3 @@ void Next_ScanList(void) {
 	}
 	UI_DrawScan();
 }
-

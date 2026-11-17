@@ -5,25 +5,32 @@
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
- *     Unless required by applicable law or agreed to in writing, software
- *     distributed under the License is distributed on an "AS IS" BASIS,
- *     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *     See the License for the specific language governing permissions and
- *     limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
+#include "app/css.h"
+#include "app/flashlight.h"
 #include "app/fm.h"
 #include "app/lock.h"
 #include "app/radio.h"
-#include "app/fm.h"
 #include "app/menu.h"
+#ifdef ENABLE_AM_FIX
+	#include "task/am-fix.h"
+#endif
 #ifdef ENABLE_REGISTER_EDIT
 	#include "app/regedit.h"
 #endif
 #ifdef ENABLE_SPECTRUM
 	#include "app/spectrum.h"
+#endif
+#ifdef UART_DEBUG
+	#include "driver/uart.h"
 #endif
 #include "driver/beep.h"
 #include "driver/bk4819.h"
@@ -59,18 +66,18 @@ void SetDefaultKeyShortcuts(uint8_t IncludeSideKeys) {
 	}
 
 	gExtendedSettings.KeyShortcut[0] = ACTION_FM_RADIO;			//0 key long
-	gExtendedSettings.KeyShortcut[1] = ACTION_SQ_LEVEL;			//1 key long
+	gExtendedSettings.KeyShortcut[1] = ACTION_FREQ_STEP;		//1 key long
 	gExtendedSettings.KeyShortcut[2] = ACTION_MODULATION;		//2 key long
 	gExtendedSettings.KeyShortcut[3] = ACTION_BAND_WIDTH;	    //3 key long
 	gExtendedSettings.KeyShortcut[4] = ACTION_TX_POWER;			//4 key long
-	gExtendedSettings.KeyShortcut[5] = ACTION_AGC_MODE;			//5 key long
+	gExtendedSettings.KeyShortcut[5] = ACTION_AM_FIX;			//5 key long
 	gExtendedSettings.KeyShortcut[6] = ACTION_DUAL_STANDBY;		//6 key long
-	gExtendedSettings.KeyShortcut[7] = ACTION_REPEATER_MODE;	//7 key long
-	gExtendedSettings.KeyShortcut[8] = ACTION_REG_EDIT;		    //8 key long
+	gExtendedSettings.KeyShortcut[7] = ACTION_REPEATER_MODE;  	//7 key long
+	gExtendedSettings.KeyShortcut[8] = ACTION_DTMF_DECODE;		//8 key long
 	gExtendedSettings.KeyShortcut[9] = ACTION_TOGGLE_SCANLIST;	//9 key long
 	gExtendedSettings.KeyShortcut[10] = ACTION_TX_FREQ;			//* key long
 	gExtendedSettings.KeyShortcut[11] = ACTION_LOCK;			//# key long
-	gExtendedSettings.KeyShortcut[12] = ACTION_TX_CTCSS_DCS;	//Menu key long
+	gExtendedSettings.KeyShortcut[12] = ACTION_SQ_LEVEL;	    //Menu key long
 	gExtendedSettings.KeyShortcut[13] = ACTION_DUAL_DISPLAY;	//Exit key long
 
 	SETTINGS_SaveGlobals();
@@ -82,6 +89,11 @@ void KeypressAction(uint8_t Action) {
 	}
 
 	if (gDTMF_InputMode && Action != ACTION_DTMF_DECODE) {
+		return;
+	}
+
+	if (gFlashlightMode) {
+		FLASHLIGHT_Toggle();
 		return;
 	}
 
@@ -104,7 +116,11 @@ void KeypressAction(uint8_t Action) {
 		return;
 	}
 
+	#ifdef ENABLE_KEEP_MONITOR_MODE_UP_DN
+	if (gMonitorMode && Action == ACTION_MONITOR) {
+#else
 	if (gMonitorMode) {
+#endif		
 		gMonitorMode = false;
 		RADIO_EndRX();
 		return;
@@ -125,7 +141,7 @@ void KeypressAction(uint8_t Action) {
 				break;
 
 			case ACTION_FREQUENCY_DETECT:
-				if (!gSettings.bFLock) {
+				if (!gSettings.bFLock && gFM_Mode == FM_MODE_OFF) {
 					gInputBoxWriteIndex = 0;
 					KEY_LongPressed = false;
 					RADIO_FrequencyDetect();
@@ -212,31 +228,46 @@ void KeypressAction(uint8_t Action) {
 				gManualScanDirection = gSettings.ScanDirection;
 				gScannerMode ^= 1;
 				bBeep740 = gScannerMode;
-				SCANNER_Countdown = 50;//was 20 slowed down to enable working search function
-				UI_DrawScan();
+				
+				// Dynamic initialization delay on user toggle
+				if (gVfoState[gSettings.CurrentVfo].RX.CodeType != CODE_TYPE_OFF) {
+					SCANNER_Countdown = 250;
+				} else {
+					SCANNER_Countdown = 65;
+				}
+
+				UI_DrawScan();  
 				break;
 
-			case ACTION_TX_PRIORITY:
-				gSettings.TxPriority ^= 1;
-				SETTINGS_SaveGlobals();
-				UI_DrawDialogText(DIALOG_TX_PRIORITY, gSettings.TxPriority);
+			case ACTION_FLASHLIGHT:
+				if (!gFlashlightMode) {
+					FLASHLIGHT_Toggle();
+				}
 				break;
 
 			case ACTION_FM_RADIO:
 				if (gFM_Mode == FM_MODE_OFF) {
 					RADIO_DisableSaveMode();
-					UI_DrawDialogText(DIALOG_FM_RADIO, gSettings.FmFrequency);
-					if (gSettings.DualStandby) {
+					if (gSettings.DualDisplay) {
 						RADIO_Tune(gSettings.CurrentVfo);
 						gIdleMode = IDLE_MODE_DUAL_STANDBY;
 					}
 					FM_Play();
 				} else {
 					FM_Disable(FM_MODE_OFF);
-					UI_DrawDialogText(DIALOG_FM_RADIO, !gSettings.FmFrequency);
+					gColorForeground = COLOR_FOREGROUND;
+					UI_DrawSmallString(12, 86, "       ", 7);
 				}
 				break;
-				
+
+			case ACTION_AM_FIX:
+#ifdef ENABLE_AM_FIX
+				RADIO_CancelMode();
+				AM_FIX_ToggleEnabled();
+				UI_DrawDialogText(DIALOG_AM_FIX, gExtendedSettings.AmFixEnabled);
+#endif
+				break;
+
 			case ACTION_VOX:
 				RADIO_CancelMode();
 				gSettings.Vox ^= 1;
@@ -247,11 +278,11 @@ void KeypressAction(uint8_t Action) {
 					VOX_IsTransmitting = false;
 				}
 				if (gSettings.Vox == true) {
-				gColorForeground = COLOR_GREY;
-				UI_DrawSmallString(48, 86, "V", 1); 
+				gColorForeground = COLOR_FOREGROUND;
+				UI_DrawSmallString(70, 86, "V", 1); 
 				} else {
-				gColorForeground = COLOR_GREY;
-				UI_DrawSmallString(48, 86, " ", 1);
+				gColorForeground = COLOR_FOREGROUND;
+				UI_DrawSmallString(70, 86, " ", 1);
 				}
 				UI_DrawDialogText(DIALOG_VOX, gSettings.Vox);
 				break;
@@ -277,19 +308,23 @@ void KeypressAction(uint8_t Action) {
 				break;
 
 			case ACTION_DUAL_STANDBY:
-				RADIO_CancelMode();
-				gSettings.DualStandby ^= 1;
-				RADIO_Tune(gSettings.CurrentVfo);
-				SETTINGS_SaveGlobals();
-				gIdleMode = IDLE_MODE_OFF;
-				if (gSettings.DualStandby == true) {
-				gColorForeground = COLOR_GREY;
-				UI_DrawSmallString(112, 86, "D", 1); 
-				} else {
-				gColorForeground = COLOR_GREY;
-				UI_DrawSmallString(112, 86, "S", 1);
+				if (gSettings.DualDisplay) {
+					RADIO_CancelMode();
+					gSettings.DualStandby ^= 1;
+					RADIO_Tune(gSettings.CurrentVfo);
+					SETTINGS_SaveGlobals();
+					gIdleMode = IDLE_MODE_OFF;
+					
+					if (gSettings.DualStandby == true) {
+						gColorForeground = COLOR_FOREGROUND;
+						UI_DrawSmallString(114, 86, "D", 1); 
+					} else {
+						// Removed the accidental gSettings.DualDisplay = false;
+						gColorForeground = COLOR_FOREGROUND;
+						UI_DrawSmallString(114, 86, " ", 1);
+					}
+					UI_DrawDialogText(DIALOG_DUAL_STANDBY, gSettings.DualStandby);
 				}
-				UI_DrawDialogText(DIALOG_DUAL_STANDBY, gSettings.DualStandby);
 				break;
 
 			case ACTION_BACKLIGHT:
@@ -311,17 +346,24 @@ void KeypressAction(uint8_t Action) {
 				break;
 
 			case ACTION_TOGGLE_SCANLIST:
+				RADIO_CancelMode();
 				if (gSettings.WorkMode && !gExtendedSettings.ScanAll) {
 					gVfoState[gSettings.CurrentVfo].IsInscanList ^= (1 << gExtendedSettings.CurrentScanList);
 					CHANNELS_SaveVfo();
 					UI_DrawDialogText(DIALOG_TOGGLE_SCANLIST, ((gVfoState[gSettings.CurrentVfo].IsInscanList >> gExtendedSettings.CurrentScanList) & 1));
 				}
 				break;
-
-			case ACTION_DTMF_DECODE:
+				
+				case ACTION_DTMF_DECODE:
 				if (gFM_Mode != FM_MODE_OFF) {
 					return;
 				}
+				
+				if (!gSettings.DualDisplay) {
+					BEEP_Play(440, 4, 80);
+					return;
+				}
+
 				if (!gDTMF_InputMode) {
 					if (gRadioMode == RADIO_MODE_RX) {
 						return;
@@ -342,11 +384,17 @@ void KeypressAction(uint8_t Action) {
 				}
 				break;
 
-			case ACTION_DUAL_DISPLAY:
+			 case ACTION_DUAL_DISPLAY:
 				if (gFM_Mode != FM_MODE_OFF) {
 					return;
 				}
 				gSettings.DualDisplay ^= 1;
+				if (!gSettings.DualDisplay) {
+					gSettings.DualStandby = false;
+					gColorForeground = COLOR_FOREGROUND;
+					UI_DrawSmallString(114, 86, " ", 1);
+				}
+
 				SETTINGS_SaveGlobals();
 				VOX_Timer = 0;
 				UI_DrawMain(true);
@@ -366,6 +414,7 @@ void KeypressAction(uint8_t Action) {
 				break;
 
 			case ACTION_BEEP:
+			    RADIO_CancelMode();
 				gSettings.KeyBeep ^= 1;
 				SETTINGS_SaveGlobals();
 				UI_DrawDialogText(DIALOG_KEY_BEEP, gSettings.KeyBeep);
@@ -385,6 +434,9 @@ void KeypressAction(uint8_t Action) {
 			
 #ifdef ENABLE_SPECTRUM
 			case ACTION_SPECTRUM:
+				if (gFM_Mode != FM_MODE_OFF) {
+					return;
+				}
 				gInputBoxWriteIndex = 0;
 				APP_Spectrum();
 				break;
@@ -392,14 +444,15 @@ void KeypressAction(uint8_t Action) {
 
 #ifdef ENABLE_REGISTER_EDIT
 			case ACTION_REG_EDIT:
-				APP_RegEdit();
+				APP_RegEdit(0);
 				break;
 #endif
 
 			case ACTION_MODULATION:
-				gMenuIndex = MENU_MODULATION;
-				DISPLAY_Fill(0, 159, 1, 81, COLOR_BACKGROUND);
-				MENU_DrawSetting();
+			    RADIO_CancelMode();
+				gVfoState[gSettings.CurrentVfo].gModulationType = (gVfoState[gSettings.CurrentVfo].gModulationType + 1) % 4;
+				UI_DrawVfo(gSettings.CurrentVfo);
+				CHANNELS_SaveVfo();
 				break;
 
 			case ACTION_BAND_WIDTH:
@@ -407,15 +460,28 @@ void KeypressAction(uint8_t Action) {
 				gVfoState[gSettings.CurrentVfo].bIsNarrow ^= 1;
 				UI_DrawVfo(gSettings.CurrentVfo);
 				CHANNELS_SaveVfo();
-				UI_DrawDialogText(DIALOG_BAND_WIDTH, gVfoState[gSettings.CurrentVfo].bIsNarrow);
+				//UI_DrawDialogText(DIALOG_BAND_WIDTH, gVfoState[gSettings.CurrentVfo].bIsNarrow);
 				break;
 
-			case ACTION_TX_CTCSS_DCS:// replaces NOAA
+			case ACTION_TX_CTCSS_DCS:
 				gMenuIndex = MENU_TX_CTCSS_DCS;
 				DISPLAY_Fill(0, 159, 1, 81, COLOR_BACKGROUND);
 				MENU_DrawSetting();
 				break;
+				
+			case ACTION_TX_PRIORITY:
+			    RADIO_CancelMode();
+				gSettings.TxPriority ^= 1;
+				SETTINGS_SaveGlobals();
+				UI_DrawDialogText(DIALOG_TX_PRIORITY, gSettings.TxPriority);
+				break;
 
+			case ACTION_TX_PROHIBIT:
+				RADIO_CancelMode();
+				gExtendedSettings.TxProhibit ^= 1;
+				SETTINGS_SaveGlobals();
+				UI_DrawDialogText(DIALOG_PROHIBIT_TX, gExtendedSettings.TxProhibit);
+				break;
 		}
 	}
 }

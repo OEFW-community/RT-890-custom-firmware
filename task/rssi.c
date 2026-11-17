@@ -73,13 +73,13 @@ static uint8_t GetToneStatus(uint8_t CodeType, bool bMuteEnabled)
 		}
 	}
 
-	// Check DCS N (its actually I)
-	if (Value & 0x4000U && (CodeType == CODE_TYPE_DCS_I || bMuteEnabled)) {
+	// Check DCS N
+	if (Value & 0x4000U && (CodeType == CODE_TYPE_DCS_N || bMuteEnabled)) {
 		return STATUS_GOT_TONE;
 	}
 
-	// Check DCS I (its actually N)
-	if (Value & 0x8000U && CodeType == CODE_TYPE_DCS_N) {
+	// Check DCS I
+	if (Value & 0x8000U && CodeType == CODE_TYPE_DCS_I) {
 		return STATUS_GOT_TONE;
 	}
 
@@ -92,12 +92,14 @@ static uint8_t GetToneStatus(uint8_t CodeType, bool bMuteEnabled)
 
 static void CheckRSSI(void)
 {
-	if (gVoxRssiUpdateTimer == 0 && !gDataDisplay && !gDTMF_InputMode && !gFrequencyDetectMode && !gReceptionMode && !gFskDataReceived && gScreenMode == SCREEN_MAIN) {
+	if (gVoxRssiUpdateTimer == 0 && !gDataDisplay && !gDTMF_InputMode && !gFrequencyDetectMode && !gReceptionMode 
+		&& !gFskDataReceived && gScreenMode == SCREEN_MAIN && !gFlashlightMode) {
 		uint16_t RSSI;
 		uint16_t Power;
 
 #ifdef ENABLE_SLOWER_RSSI_TIMER
-		gVoxRssiUpdateTimer = 500;
+	  //gVoxRssiUpdateTimer = 500;
+	    gVoxRssiUpdateTimer = 2000;
 #else
 		gVoxRssiUpdateTimer = 100;
 #endif
@@ -116,6 +118,8 @@ static void CheckRSSI(void)
 		UI_DrawBar(Power, gCurrentVfo);
 		ConvertRssiToDbm(RSSI);
 		UI_DrawRxDBM(gCurrentVfo, false);
+		ConvertRssiToSmeter(RSSI);/////
+		UI_DrawRxSmeter(!gCurrentVfo, false);/////
 	}
 }
 

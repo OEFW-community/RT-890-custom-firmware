@@ -18,10 +18,10 @@
 #define RADIO_SPECTRUM_H
 
 enum {
-  STEPS_128,
-  STEPS_64,
-  STEPS_32,
-  STEPS_16,
+  STEPS_160,
+  STEPS_80,
+  STEPS_40,
+  STEPS_20,
   STEPS_COUNT,
 };
 

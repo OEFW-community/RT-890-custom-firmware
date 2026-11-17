@@ -23,20 +23,19 @@
 
 static void DrawBandwidth(bool bIsNarrow, uint8_t Vfo)
 {
+	//const uint8_t Y = 61 - (Vfo * 41);
 	const uint8_t Y = 52 - (Vfo * 41);
 
-	gColorForeground = COLOR_RGB(16, 45, 0);
+	gColorForeground = COLOR_FOREGROUND;
 	if (bIsNarrow) {
-		UI_DrawSmallString(124, Y, "12.5K", 5);
+		UI_DrawSmallString(124, Y, "N", 1);
 	} else {
-	gColorForeground = COLOR_RGB(31, 41, 0);	
-		UI_DrawSmallString(124, Y, "25.0K", 5);
+		UI_DrawSmallString(124, Y, "W", 1);
 	}
 }
 
 void UI_DrawVfo(uint8_t Vfo)
 {
-	// TODO display enabled scan list, maybe using grid or dots
 	UI_DrawName(Vfo, gVfoState[Vfo].Name);
 	gColorForeground = COLOR_FOREGROUND;
 	UI_DrawVfoFrame(Vfo);
@@ -44,12 +43,12 @@ void UI_DrawVfo(uint8_t Vfo)
 	if (Vfo == gCurrentVfo) {
 		if (gRadioMode == RADIO_MODE_RX) {
 			UI_DrawRX(Vfo);
-			UI_DrawExtra(2, gVfoState[Vfo].gModulationType, Vfo);
-			gColorForeground = COLOR_GREEN;
+			UI_DrawExtra(0, gVfoState[Vfo].gModulationType, Vfo);
+			gColorForeground = COLOR_FOREGROUND;
 		} else if (gRadioMode == RADIO_MODE_TX) {
 			UI_DrawRX(Vfo);
 			UI_DrawExtra(1, gVfoState[Vfo].gModulationType, Vfo);
-			gColorForeground = COLOR_RED;
+			gColorForeground = COLOR_FOREGROUND;
 		} else {
 			UI_DrawExtra(0, gVfoState[Vfo].gModulationType, Vfo);
 			gColorForeground = COLOR_FOREGROUND;
@@ -60,8 +59,8 @@ void UI_DrawVfo(uint8_t Vfo)
 	}
 
 	if (gSettings.CurrentVfo == Vfo && gFrequencyReverse) {
-		gColorForeground = COLOR_RED;
-		UI_DrawFrequency(gVfoState[Vfo].TX.Frequency, Vfo, COLOR_RED);
+		gColorForeground = COLOR_FOREGROUND;
+		UI_DrawFrequency(gVfoState[Vfo].TX.Frequency, Vfo, COLOR_FOREGROUND);
 		UI_DrawCss(gVfoState[Vfo].TX.CodeType, gVfoState[Vfo].TX.Code, gVfoState[Vfo].Encrypt, gVfoState[Vfo].bMuteEnabled, Vfo);
 	} else {
 		UI_DrawFrequency(gVfoInfo[Vfo].Frequency, Vfo, gColorForeground);
@@ -69,7 +68,7 @@ void UI_DrawVfo(uint8_t Vfo)
 	}
 
 	UI_DrawTxPower(gVfoState[Vfo].bIsLowPower, Vfo);
-	gColorForeground = COLOR_RGB( 0, 24, 31);
+	gColorForeground = COLOR_FOREGROUND;
 	if (gSettings.WorkMode) {
 		UI_DrawChannel(gSettings.VfoChNo[Vfo], Vfo);
 	} else {

@@ -71,15 +71,14 @@ static void DrawFSK(void)
 
 static void DrawReceivedFSKID(void)
 {
-	if (gScreenMode == SCREEN_MAIN && !gReceptionMode) {
+	if (gSettings.DualDisplay == true && !gReceptionMode) {
 		UI_DrawDialog();
 		gColorForeground = COLOR_FOREGROUND;
 		if (gCurrentVfo == 1) {
-			UI_DrawString(10, 54, "Sender ID:", 10);// Area B
-		} else {
-			UI_DrawString(10, 54, "Sender ID:", 10);// Area A
-		}
 		UI_DrawString(10, 38, FSK, 16);
+		} else {
+		UI_DrawString(10, 38, FSK, 16);
+		}
 	}
 }
 
@@ -152,7 +151,7 @@ bool DATA_ReceiverCheck(void)
 			SETTINGS_SaveGlobals();
 			HARDWARE_Reboot();
 		}
-		if (gScreenMode == SCREEN_MAIN && !gFrequencyDetectMode) {
+		if (gSettings.DualDisplay == true && !gFrequencyDetectMode) {
 			UI_DrawDTMFString();
 			if (gDTMF_Settings.Display) {
 				gDataDisplay = true;

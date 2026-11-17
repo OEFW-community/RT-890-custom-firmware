@@ -32,6 +32,9 @@ enum SCREEN_Mode_t {
 #ifdef ENABLE_REGISTER_EDIT
 	SCREEN_REGEDIT,
 #endif
+#ifdef ENABLE_NOAA
+	SCREEN_NOAA,
+#endif
 };
 
 typedef enum SCREEN_Mode_t SCREEN_Mode_t;
@@ -80,6 +83,7 @@ extern bool gFrequencyDetectMode;
 extern bool gEnableBlink;
 extern bool gRedrawScreen;
 extern bool gScannerMode;
+extern bool gFlashlightMode;
 extern bool gSaveMode;
 extern bool gReceptionMode;
 extern bool gReceivingAudio;

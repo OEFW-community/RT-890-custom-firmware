@@ -170,14 +170,35 @@ typedef struct __attribute__((packed)) {
 	// 0x0F
 	uint8_t ScanAll: 1;
 	uint8_t MicGainLevel: 6;
-	uint8_t Undefined: 1;	// free for use
+	uint8_t TxProhibit: 1;	// TX Prohibit — blocks all TX when set
 	// 0x10
-	uint8_t SqRSSIBase;
-	// 0x12
-	uint8_t SqNoiseBase;
-	// 0x13
-	uint8_t SqGlitchBase;
-	//0x14...
+	uint8_t LedHeartbeat: 1;	// LED Heartbeat — green standby blink, 1=on (default from 0xFF flash)
+	uint8_t AmFixHysteresis: 3;	// AM Fix Hysteresis profile: 0=Narrow 1=Tight 2=Default 3=Relaxed 4=Wide
+	uint8_t VhfCutoff: 2;		// VHF filter cutoff: 0=240MHz (default) 1=280MHz 2=300MHz
+	uint8_t PcbVersion: 1;		// PCB revision: 0=PCB 2.0 (default) 1=PCB 2.1
+	// 0x11
+	// Signed dB trim applied to AM Fix's RSSI reading, to compensate for
+	// gain differences between antenna A/B -- tuned per antenna. Applies on both PCB revisions
+	// unconditionally. Persisted to flash (see am-fix.c for the load-time
+	// clamp to +/-20dB). Reset to 0 via the "Reset Ant Trim" menu item
+	// (explicit user action -- deliberately not auto-reset from the
+	// flash-erased sentinel, since -1 is a technically valid calibration
+	// value too and can't be reliably told apart from "never set").
+	int8_t AmFixRssiTrimDb;
+	// 0x12-0x19
+	// Scan/Search range bounds for VFO scanning, in the same raw units as
+	// RX.Frequency (raw x 10 = Hz, e.g. 1.3GHz = 130000000). Replaces the
+	// old hardcoded 10MHz-1.3GHz full-spectrum search limits in
+	// CHANNELS_NextChannelVfo() with a user-configurable range, set via
+	// the "Scan Start"/"Scan Finish" menu items (3-digit whole-MHz entry).
+	// Defaults to the full original range on first boot / erased flash --
+	// see SETTINGS_LoadSettings() -- so existing behavior is unchanged
+	// until deliberately narrowed. NOTE: CHANNELS_UpdateVFOFreq()'s
+	// manual-entry validation deliberately still uses the full hardware
+	// range, not these bounds -- typing in a frequency outside the
+	// current scan range must still work.
+	uint32_t ScanRangeStart;
+	uint32_t ScanRangeFinish;
 } gExtendedSettings_t;
 
 extern Calibration_t gCalibration;

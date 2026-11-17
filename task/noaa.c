@@ -23,8 +23,8 @@ uint16_t NOAA_NextChannelCountdown;
 void Task_CheckNOAA(void)
 {
 	if (gReceptionMode && !gReceivingAudio && NOAA_NextChannelCountdown == 0) {
-		CHANNELS_NextNOAA(11);
-		NOAA_NextChannelCountdown = 300;
+		CHANNELS_NextNOAA(3);
+		NOAA_NextChannelCountdown = 100;
 	}
 }
 

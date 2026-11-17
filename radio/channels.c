@@ -21,6 +21,7 @@
 #include "driver/audio.h"
 #include "driver/key.h"
 #include "driver/serial-flash.h"
+#include "driver/pins.h"
 #include "helper/inputbox.h"
 #include "misc.h"
 #include "radio/channels.h"
@@ -84,10 +85,10 @@ static const ChannelInfo_t VfoTemplate[2] = {
 };
 
 #ifdef ENABLE_NOAA
-static const ChannelInfo_t gNoaaDefaultChannels[11] = {
+static const ChannelInfo_t gNoaaDefaultChannels[3] = {
 	{
-		.RX = { .Frequency = 16255000, .Code = 0x000, .CodeType = CODE_TYPE_OFF, },
-		.TX = { .Frequency = 16255000, .Code = 0x000, .CodeType = CODE_TYPE_OFF, },
+		.RX = { .Frequency = 16072500, .Code = 0x000, .CodeType = CODE_TYPE_OFF, },//MCA MSI CH62
+		.TX = { .Frequency = 16072500, .Code = 0x000, .CodeType = CODE_TYPE_OFF, },
 		.Golay = 0x000000,
 
 		.Unknown0 = 0,
@@ -110,8 +111,8 @@ static const ChannelInfo_t gNoaaDefaultChannels[11] = {
 		.Name = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF },
 	},
 	{
-		.RX = { .Frequency = 16240000, .Code = 0x000, .CodeType = CODE_TYPE_OFF, },
-		.TX = { .Frequency = 16240000, .Code = 0x000, .CodeType = CODE_TYPE_OFF, },
+		.RX = { .Frequency = 16077500, .Code = 0x000, .CodeType = CODE_TYPE_OFF, },//MCA MSI CH63
+		.TX = { .Frequency = 16077500, .Code = 0x000, .CodeType = CODE_TYPE_OFF, },
 		.Golay = 0x000000,
 
 		.Unknown0 = 0,
@@ -134,8 +135,8 @@ static const ChannelInfo_t gNoaaDefaultChannels[11] = {
 		.Name = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF },
 	},
 	{
-		.RX = { .Frequency = 16247500, .Code = 0x000, .CodeType = CODE_TYPE_OFF, },
-		.TX = { .Frequency = 16247500, .Code = 0x000, .CodeType = CODE_TYPE_OFF, },
+		.RX = { .Frequency = 16082500, .Code = 0x000, .CodeType = CODE_TYPE_OFF, },//MCA MSI CH64
+		.TX = { .Frequency = 16082500, .Code = 0x000, .CodeType = CODE_TYPE_OFF, },
 		.Golay = 0x000000,
 
 		.Unknown0 = 0,
@@ -156,203 +157,30 @@ static const ChannelInfo_t gNoaaDefaultChannels[11] = {
 		._0x14 = 0xFF,
 		._0x15 = 0xFF,
 		.Name = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF },
-	},
-	{
-		.RX = { .Frequency = 16242500, .Code = 0x000, .CodeType = CODE_TYPE_OFF, },
-		.TX = { .Frequency = 16242500, .Code = 0x000, .CodeType = CODE_TYPE_OFF, },
-		.Golay = 0x000000,
-
-		.Unknown0 = 0,
-		.bIs24Bit = 0,
-		.bMuteEnabled = 0,
-		.Encrypt = 0,
-
-		.Available = 0,
-		.gModulationType = 0,
-		.BCL = BUSY_LOCK_OFF,
-		.ScanAdd = 1,
-		.bIsLowPower = 0,
-		.bIsNarrow = 0,
-
-		._0x11 = 0x11,
-		.Scramble = 0x00,
-		.IsInscanList = 0xFF,
-		._0x14 = 0xFF,
-		._0x15 = 0xFF,
-		.Name = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF },
-	},
-	{
-		.RX = { .Frequency = 16245000, .Code = 0x000, .CodeType = CODE_TYPE_OFF, },
-		.TX = { .Frequency = 16245000, .Code = 0x000, .CodeType = CODE_TYPE_OFF, },
-		.Golay = 0x000000,
-
-		.Unknown0 = 0,
-		.bIs24Bit = 0,
-		.bMuteEnabled = 0,
-		.Encrypt = 0,
-
-		.Available = 0,
-		.gModulationType = 0,
-		.BCL = BUSY_LOCK_OFF,
-		.ScanAdd = 1,
-		.bIsLowPower = 0,
-		.bIsNarrow = 0,
-
-		._0x11 = 0x11,
-		.Scramble = 0x00,
-		.IsInscanList = 0xFF,
-		._0x14 = 0xFF,
-		._0x15 = 0xFF,
-		.Name = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF },
-	},
-	{
-		.RX = { .Frequency = 16250000, .Code = 0x000, .CodeType = CODE_TYPE_OFF, },
-		.TX = { .Frequency = 16250000, .Code = 0x000, .CodeType = CODE_TYPE_OFF, },
-		.Golay = 0x000000,
-
-		.Unknown0 = 0,
-		.bIs24Bit = 0,
-		.bMuteEnabled = 0,
-		.Encrypt = 0,
-
-		.Available = 0,
-		.gModulationType = 0,
-		.BCL = BUSY_LOCK_OFF,
-		.ScanAdd = 1,
-		.bIsLowPower = 0,
-		.bIsNarrow = 0,
-
-		._0x11 = 0x11,
-		.Scramble = 0x00,
-		.IsInscanList = 0xFF,
-		._0x14 = 0xFF,
-		._0x15 = 0xFF,
-		.Name = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF },
-	},
-	{
-		.RX = { .Frequency = 16252500, .Code = 0x000, .CodeType = CODE_TYPE_OFF, },
-		.TX = { .Frequency = 16252500, .Code = 0x000, .CodeType = CODE_TYPE_OFF, },
-		.Golay = 0x000000,
-
-		.Unknown0 = 0,
-		.bIs24Bit = 0,
-		.bMuteEnabled = 0,
-		.Encrypt = 0,
-
-		.Available = 0,
-		.gModulationType = 0,
-		.BCL = BUSY_LOCK_OFF,
-		.ScanAdd = 1,
-		.bIsLowPower = 0,
-		.bIsNarrow = 0,
-
-		._0x11 = 0x11,
-		.Scramble = 0x00,
-		.IsInscanList = 0xFF,
-		._0x14 = 0xFF,
-		._0x15 = 0xFF,
-		.Name = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF },
-	},
-	{
-		.RX = { .Frequency = 16165000, .Code = 0x000, .CodeType = CODE_TYPE_OFF, },
-		.TX = { .Frequency = 16165000, .Code = 0x000, .CodeType = CODE_TYPE_OFF, },
-		.Golay = 0x000000,
-
-		.Unknown0 = 0,
-		.bIs24Bit = 0,
-		.bMuteEnabled = 0,
-		.Encrypt = 0,
-
-		.Available = 0,
-		.gModulationType = 0,
-		.BCL = BUSY_LOCK_OFF,
-		.ScanAdd = 1,
-		.bIsLowPower = 0,
-		.bIsNarrow = 0,
-
-		._0x11 = 0x11,
-		.Scramble = 0x00,
-		.IsInscanList = 0xFF,
-		._0x14 = 0xFF,
-		._0x15 = 0xFF,
-		.Name = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF },
-	},
-	{
-		.RX = { .Frequency = 16177500, .Code = 0x000, .CodeType = CODE_TYPE_OFF, },
-		.TX = { .Frequency = 16177500, .Code = 0x000, .CodeType = CODE_TYPE_OFF, },
-		.Golay = 0x000000,
-
-		.Unknown0 = 0,
-		.bIs24Bit = 0,
-		.bMuteEnabled = 0,
-		.Encrypt = 0,
-
-		.Available = 0,
-		.gModulationType = 0,
-		.BCL = BUSY_LOCK_OFF,
-		.ScanAdd = 1,
-		.bIsLowPower = 0,
-		.bIsNarrow = 0,
-
-		._0x11 = 0x11,
-		.Scramble = 0x00,
-		.IsInscanList = 0xFF,
-		._0x14 = 0xFF,
-		._0x15 = 0xFF,
-		.Name = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF },
-	},
-	{
-		.RX = { .Frequency = 16175000, .Code = 0x000, .CodeType = CODE_TYPE_OFF, },
-		.TX = { .Frequency = 16175000, .Code = 0x000, .CodeType = CODE_TYPE_OFF, },
-		.Golay = 0x000000,
-
-		.Unknown0 = 0,
-		.bIs24Bit = 0,
-		.bMuteEnabled = 0,
-		.Encrypt = 0,
-
-		.Available = 0,
-		.gModulationType = 0,
-		.BCL = BUSY_LOCK_OFF,
-		.ScanAdd = 1,
-		.bIsLowPower = 0,
-		.bIsNarrow = 0,
-
-		._0x11 = 0x11,
-		.Scramble = 0x00,
-		.IsInscanList = 0xFF,
-		._0x14 = 0xFF,
-		._0x15 = 0xFF,
-		.Name = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF },
-	},
-	{
-		.RX = { .Frequency = 16200000, .Code = 0x000, .CodeType = CODE_TYPE_OFF, },
-		.TX = { .Frequency = 16200000, .Code = 0x000, .CodeType = CODE_TYPE_OFF, },
-		.Golay = 0x000000,
-
-		.Unknown0 = 0,
-		.bIs24Bit = 0,
-		.bMuteEnabled = 0,
-		.Encrypt = 0,
-
-		.Available = 0,
-		.gModulationType = 0,
-		.BCL = BUSY_LOCK_OFF,
-		.ScanAdd = 1,
-		.bIsLowPower = 0,
-		.bIsNarrow = 0,
-
-		._0x11 = 0x11,
-		.Scramble = 0x00,
-		.IsInscanList = 0xFF,
-		._0x14 = 0xFF,
-		._0x15 = 0xFF,
-		.Name = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF },
-	},
+	},	
 };
 #endif
 
 uint16_t gFreeChannelsCount;
+
+#ifdef ENABLE_833_RETUNE
+// 8.33 kHz channel spacing uses x.x000, x.x250, x.x500, x.x750 multiples.
+// Because 1/3 is periodic in decimal, every 3rd step can land 1 unit off;
+// this function snaps the frequency back to the nearest valid boundary.
+// Works for both 8-digit (VFO) and 7-digit (spectrum) frequency representations.
+void Snap833Step(uint32_t *frequency)
+{
+	uint32_t rem = *frequency % 10;
+	if (rem == 1)
+		*frequency -= 1;      // stepping down: x1 -> x0
+	else if (rem == 9)
+		*frequency += 1;      // stepping up:   x9 -> x0
+	else if (rem == 7)
+		*frequency -= 1;      // stepping down: x7 -> x6
+	else if (rem == 4)
+		*frequency -= 1;      // stepping down: x4 -> x3
+}
+#endif
 
 bool CHANNELS_NextChannelMr(uint8_t Key, bool OnlyFromScanlist) {
 	uint16_t startChannel = gSettings.VfoChNo[gSettings.CurrentVfo];
@@ -387,8 +215,10 @@ void CHANNELS_NextChannelVfo(uint8_t Key)
 				if (pInfo->RX.Frequency > 44000000) {
 					pInfo->RX.Frequency = 10800000;
 				}
-			} else if (pInfo->RX.Frequency > 130000000) {
-				pInfo->RX.Frequency = 130000000;
+			} else if (pInfo->RX.Frequency > gExtendedSettings.ScanRangeFinish) {
+				// Wrap to Scan Start instead of the old clamp-and-stall at
+				// the hardware ceiling -- see settings.h ScanRangeFinish.
+				pInfo->RX.Frequency = gExtendedSettings.ScanRangeStart;
 			}
 		} else {
 			pInfo->RX.Frequency -= gFrequencyStep;
@@ -402,17 +232,23 @@ void CHANNELS_NextChannelVfo(uint8_t Key)
 				if (pInfo->RX.Frequency > 14600000 && pInfo->RX.Frequency < 43000000) {
 					pInfo->RX.Frequency = 14600000;
 				}
-			} else if (pInfo->RX.Frequency < 1000000) {
-				pInfo->RX.Frequency = 1000000;
+			} else if (pInfo->RX.Frequency < gExtendedSettings.ScanRangeStart) {
+				// Wrap to Scan Finish instead of the old clamp-and-stall at
+				// the hardware floor -- see settings.h ScanRangeStart.
+				pInfo->RX.Frequency = gExtendedSettings.ScanRangeFinish;
 			}
 		}
+
+		#ifdef ENABLE_833_RETUNE
+		if (gFrequencyStep == 833) {
+			uint32_t freq = pInfo->RX.Frequency;
+			Snap833Step(&freq);
+			pInfo->RX.Frequency = freq;
+		}
+		#endif
+
 		pInfo->TX.Frequency = pInfo->RX.Frequency;
 		gVfoInfo[gSettings.CurrentVfo].Frequency = pInfo->RX.Frequency;
-		// if (pInfo->RX.Frequency < 13600000) {
-		// 	pInfo->gModulationType = 1;
-		// } else {
-		// 	pInfo->gModulationType = 0;
-		// }
 	} else {
 		if (Key == KEY_UP) {
 			pInfo->TX.Frequency += gFrequencyStep;
@@ -426,8 +262,8 @@ void CHANNELS_NextChannelVfo(uint8_t Key)
 				if (pInfo->TX.Frequency > 44000000) {
 					pInfo->TX.Frequency = 10800000;
 				}
-			} else if (pInfo->TX.Frequency > 130000000) {
-				pInfo->TX.Frequency = 130000000;
+			} else if (pInfo->TX.Frequency > gExtendedSettings.ScanRangeFinish) {
+				pInfo->TX.Frequency = gExtendedSettings.ScanRangeStart;
 			}
 		} else {
 			pInfo->TX.Frequency -= gFrequencyStep;
@@ -441,8 +277,8 @@ void CHANNELS_NextChannelVfo(uint8_t Key)
 				if (pInfo->TX.Frequency > 14600000 && pInfo->TX.Frequency < 43000000) {
 					pInfo->TX.Frequency = 14600000;
 				}
-			} else if (pInfo->TX.Frequency < 1000000) {
-				pInfo->TX.Frequency = 1000000;
+			} else if (pInfo->TX.Frequency < gExtendedSettings.ScanRangeStart) {
+				pInfo->TX.Frequency = gExtendedSettings.ScanRangeFinish;
 			}
 		}
 		gVfoInfo[gSettings.CurrentVfo].Frequency = pInfo->TX.Frequency;
@@ -458,9 +294,9 @@ void CHANNELS_NextNOAA(uint8_t Key)
 		RADIO_EndAudio();
 	}
 	if (Key == KEY_UP) {
-		gNOAA_ChannelNow = (gNOAA_ChannelNow + 1) % 11;
+		gNOAA_ChannelNow = (gNOAA_ChannelNow + 1) % 3;
 	} else {
-		gNOAA_ChannelNow = (gNOAA_ChannelNow + 10) % 11;
+		gNOAA_ChannelNow = (gNOAA_ChannelNow + 2) % 3;
 	}
 	UI_DrawNOAA(gNOAA_ChannelNow);
 	CHANNELS_SetNoaaChannel(gNOAA_ChannelNow);
@@ -519,35 +355,53 @@ void CHANNELS_UpdateVFO(void)
 	uint8_t i;
 
 	RADIO_CancelMode();
-	for (i = 0; i < 7; i++) {
+	for (i = 0; i < 8; i++) {
 		Frequency = (Frequency * 10) + gInputBox[i];
 	}
-	Frequency *= 10;
 
 	gInputBoxWriteIndex = 0;
 	INPUTBOX_Pad(0, 10);
-	
+
 	CHANNELS_UpdateVFOFreq(Frequency);
 }
 
-	void CHANNELS_UpdateVFOFreq(uint32_t Frequency)
+void CHANNELS_UpdateVFOFreq(uint32_t Frequency)
 {
-		if (
-			(!gSettings.bFLock && (Frequency >= 1000000  && Frequency <= 130000000)) ||
-			(gSettings.bFLock && (
-					(Frequency >= 14400000 && Frequency <= 14600000) ||
-					(Frequency >= 43000000 && Frequency <= 44000000) ||
-					(Frequency >= 10800000 && Frequency <= 13600000)))
-			) {
+	if (
+		(!gSettings.bFLock && (Frequency >= 1000000  && Frequency <= 130000000)) ||
+		(gSettings.bFLock && (
+				(Frequency >= 14400000 && Frequency <= 14600000) ||
+				(Frequency >= 43000000 && Frequency <= 44000000) ||
+				(Frequency >= 10800000 && Frequency <= 13600000)))
+		) {
 		if (!gFrequencyReverse) {
+			#ifdef ENABLE_833_RETUNE
+			if (gFrequencyStep == 833)
+				Snap833Step(&Frequency);
+			#endif
 			gVfoState[gSettings.CurrentVfo].RX.Frequency = Frequency;
-			// if (Frequency < 13600000) {
-			// 	gVfoState[gSettings.CurrentVfo].gModulationType = 1;
-			// } else {
-			// 	gVfoState[gSettings.CurrentVfo].gModulationType = 0;
-			// }
 		}
 		gVfoState[gSettings.CurrentVfo].TX.Frequency = Frequency;
+		// A manually-entered frequency (keypad direct entry or a spectrum-analyzer
+		// tap - the only two callers of this function) is a deliberate "go here"
+		// action, not a retune of the channel that was already loaded. Without
+		// this, RX/TX CodeType and Code are left untouched, so the new frequency
+		// silently inherits whatever CTCSS/DCS tone was active on the previously
+		// loaded channel/VFO - which is what was showing up as unexplained DCS
+		// codes on channels the user never set a tone on.
+		gVfoState[gSettings.CurrentVfo].RX.CodeType = CODE_TYPE_OFF;
+		gVfoState[gSettings.CurrentVfo].RX.Code = 0;
+		gVfoState[gSettings.CurrentVfo].TX.CodeType = CODE_TYPE_OFF;
+		gVfoState[gSettings.CurrentVfo].TX.Code = 0;
+		// Same reasoning as the tone reset above, for bank membership.
+		// VfoTemplate seeds a fresh VFO with IsInscanList = 0xFF (every
+		// bank), and nothing here ever cleared it - so a VFO slot that's
+		// never had its banks explicitly touched carries that "every
+		// bank" default forward indefinitely, and any channel saved
+		// from it inherits membership in all 8 banks. Reset to none;
+		// the user opts a new channel into whichever bank(s) they
+		// actually want it in.
+		gVfoState[gSettings.CurrentVfo].IsInscanList = 0x00;
 		CHANNELS_SaveChannel(gSettings.CurrentVfo ? 1000 : 999, &gVfoState[gSettings.CurrentVfo]);
 		CHANNELS_LoadChannel(gSettings.CurrentVfo ? 1000 : 999, gSettings.CurrentVfo);
 		RADIO_Tune(gSettings.CurrentVfo);
@@ -699,4 +553,3 @@ void CHANNELS_SaveVfo(void)
 
 	RADIO_Tune(gSettings.CurrentVfo);
 }
-

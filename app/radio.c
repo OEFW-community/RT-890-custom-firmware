@@ -37,6 +37,7 @@
 	#include "ui/noaa.h"
 #endif
 #include "task/ptt.h"
+#include "task/am-fix.h"
 #include "task/scanner.h"
 #include "task/screen.h"
 #include "ui/boot.h"
@@ -143,7 +144,7 @@ static bool TuneTX(bool bUseMic)
 			BK4819_SetAFResponseCoefficients(true, true, 5);
 		}
 		EnableTxAmp(true);
-		BK4819_SetupPowerAmplifier(gMainVfo->bIsLowPower ? gTxPowerLevelLow : gTxPowerLevelHigh);
+		BK4819_SetupPowerAmplifier(gMainVfo->bIsLowPower ? gTxPowerLevelLow : gTxPowerLevelHigh, gMainVfo->TX.Frequency);
 
 		return true;
 	} else {
@@ -218,7 +219,16 @@ void RADIO_Init(void)
 	SETTINGS_LoadCalibration();
 	SETTINGS_LoadSettings();
 
+	// Dual Watch requires Dual Display — clear persisted state if mismatched
+	if (!gSettings.DualDisplay && gSettings.DualStandby) {
+		gSettings.DualStandby = 0;
+		SETTINGS_SaveGlobals();
+	}
+
 	BK4819_Init();
+	#ifdef ENABLE_AM_FIX
+	AM_fix_init();
+	#endif
 
 	if (gSettings.DtmfState != DTMF_STATE_KILLED) {
 		UI_DrawBoot();
@@ -272,9 +282,9 @@ void RADIO_StartRX(void)
 		Task_UpdateScreen();
 		SCREEN_TurnOn();
 		if (gScannerMode && gExtendedSettings.ScanResume == 2) {	// Time Operated
-			SCANNER_Countdown = 5000;
+			SCANNER_Countdown = 2500;
 		}
-		if (gScreenMode == SCREEN_MAIN && !gDTMF_InputMode) {
+		if (gScreenMode == SCREEN_MAIN && !gDTMF_InputMode && !gFlashlightMode) {
 			if (gSettings.DualDisplay == 0 && gSettings.CurrentVfo != gCurrentVfo) {
 				const uint8_t Y = gCurrentVfo * 41;
 
@@ -287,8 +297,7 @@ void RADIO_StartRX(void)
 			UI_DrawMainBitmap(false, gSettings.CurrentVfo);
 			UI_DrawRX(gCurrentVfo);
 		}
-		if (gMainVfo->BCL == BUSY_LOCK_CSS && !gMonitorMode) {// Monitor mode bypasses TX lock
-		//if (gMainVfo->BCL == BUSY_LOCK_CSS) {
+		if (gMainVfo->BCL == BUSY_LOCK_CSS) {
 			PTT_SetLock(PTT_LOCK_BUSY);
 		}
 		if (gSettings.TxPriority && gSettings.CurrentVfo != gCurrentVfo) {
@@ -309,7 +318,7 @@ void RADIO_EndRX(void)
 	if (gScannerMode) {
 		switch (gExtendedSettings.ScanResume) {
 			case 1:		// Carrier Operated
-				SCANNER_Countdown = 3000;
+				SCANNER_Countdown = 5500;
 			case 2:		// Time Operated
 				gpio_bits_reset(GPIOA, BOARD_GPIOA_LED_GREEN);
 				break;
@@ -320,7 +329,7 @@ void RADIO_EndRX(void)
 	}
 	TuneCurrentVfo();
 	if (!gFrequencyDetectMode) {
-		if (gScreenMode == SCREEN_MAIN && !gDTMF_InputMode) {
+		if (gScreenMode == SCREEN_MAIN && !gDTMF_InputMode && !gFlashlightMode) {
 			if (!gFskDataReceived && !gDataDisplay) {
 				UI_DrawSomething();
 			} else {
@@ -345,7 +354,7 @@ void RADIO_EndRX(void)
 		if (!gRedrawScreen) {
 			FM_Resume();
 		}
-		gIncomingTimer = 1;//100 //1
+		gIncomingTimer = 100; //// fixed 100
 	} else {
 		gSignalFound = true;
 		gDetectorTimer = 500;
@@ -367,7 +376,7 @@ void RADIO_EndAudio(void)
 	SPEAKER_TurnOff(SPEAKER_OWNER_RX);
 	gRxLinkCounter = 0;
 	gNoToneCounter = 0;
-	gIncomingTimer = 1;//250 //1
+	gIncomingTimer = 250; ////
 #ifdef ENABLE_NOAA
 	NOAA_NextChannelCountdown = 3000;
 #endif
@@ -431,6 +440,7 @@ void RADIO_NoaaRetune(void)
 	}
 	RADIO_Retune();
 	RADIO_Tune(gSettings.CurrentVfo);
+	gScreenMode = SCREEN_MAIN;
 	UI_DrawMain(true);
 }
 
@@ -442,6 +452,7 @@ void RADIO_NoaaTune(void)
 	CHANNELS_SetNoaaChannel(gNOAA_ChannelNow);
 	RADIO_Tune(2);
 	NOAA_NextChannelCountdown = 3000;
+	gScreenMode = SCREEN_NOAA;
 	gNoaaMode = false;
 }
 #endif
@@ -474,6 +485,11 @@ void RADIO_SaveCurrentVfo(void)
 
 void RADIO_StartTX(bool bUseMic)
 {
+	// TX Prohibit — block all transmission when enabled
+	if (gExtendedSettings.TxProhibit) {
+		return;
+	}
+
 	if (gRadioMode == RADIO_MODE_RX) {
 		RADIO_EndRX();
 	}
@@ -534,7 +550,7 @@ void RADIO_EndTX(void)
 	}
 	BK4819_GenTail(gMainVfo->bIsNarrow);
 	gpio_bits_reset(GPIOA, BOARD_GPIOA_LED_RED);
-	BK4819_SetupPowerAmplifier(0);
+	BK4819_SetupPowerAmplifier(0, 0);
 	TuneCurrentVfo();
 	UI_DrawSomething();
 	gBatteryTimer = 3000;

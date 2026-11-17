@@ -123,10 +123,15 @@ void KEY_ReadSideKeys(void)
 	if (KEY_CurrentKey != KEY_NONE && !KEY_LongPressed) {
 		KEY_KeyCounter++;
 	}
-	if (!KEY_SideKeyLongPressed && gScreenMode == SCREEN_MAIN && !gFrequencyDetectMode) {
+	if (!KEY_SideKeyLongPressed && (gScreenMode == SCREEN_MAIN 
+		#ifdef ENABLE_NOAA
+			|| gScreenMode == SCREEN_NOAA
+		#endif
+		) && !gFrequencyDetectMode) {
+	//if (!KEY_SideKeyLongPressed && gScreenMode == SCREEN_MAIN && !gFrequencyDetectMode) {
 		if (!gpio_input_data_bit_read(GPIOF, BOARD_GPIOF_KEY_SIDE1)) {
 			KEY_Side1Counter++;
-		}
+		}//
 		if (!gpio_input_data_bit_read(GPIOA, BOARD_GPIOA_KEY_SIDE2)) {
 			KEY_Side2Counter++;
 		}

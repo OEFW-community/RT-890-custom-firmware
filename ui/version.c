@@ -18,11 +18,15 @@
 #include "ui/gfx.h"
 #include "ui/helper.h"
 #include "ui/version.h"
+#include "radio/settings.h"
 
 void UI_DrawVersion(void)
 {
 	DISPLAY_Fill(0, 159, 1, 55, COLOR_BACKGROUND);
-	UI_DrawString(24, 48, "OEFWCOM-NAF",11);
-	UI_DrawString(24, 24, "M7OCM 2.1.3", 11);
+	if (gExtendedSettings.PcbVersion) {
+		UI_DrawString(24, 48, "M7OCM PCB P2.1", 14);
+	} else {
+		UI_DrawString(24, 48, "M7OCM PCB P2.0", 14);
+	}
+	UI_DrawString(24, 24, "EVOLUTION X r3", 14);
 }
-

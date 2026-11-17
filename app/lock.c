@@ -22,7 +22,7 @@
 void LOCK_Toggle(void)
 {
 	gSettings.Lock ^= 1;
-	UI_DrawStatusIcon(2, ICON_LOCK, gSettings.Lock, COLOR_GREY);
+	UI_DrawStatusIcon(2, ICON_LOCK, gSettings.Lock, COLOR_FOREGROUND);
 	SETTINGS_SaveGlobals();
 }
 

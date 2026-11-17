@@ -21,6 +21,7 @@
 #include "driver/key.h"
 #include "misc.h"
 #include "radio/scheduler.h"
+#include "task/am-fix.h"
 #include "task/alarm.h"
 #include "task/cursor.h"
 #include "task/lock.h"
@@ -68,7 +69,11 @@ void SCHEDULER_Init(void)
 
 	tmr_para_init_ex0(&init);
 	init.period = 999;
-	init.division = 72;
+	// REVERTED: back to 72 to match the reverted 72MHz core clock
+	// (see crm_72mhz_revert.c). 120,000,000/72 gave the 0.6ms-tick bug;
+	// at 72MHz this is correct again: 72,000,000/72 = 1,000,000 Hz,
+	// /1000 counts = true 1ms/overflow.
+	init.division = 72;// reverted from 120 (was only correct for 120MHz)
 	init.clock_division = TMR_CLOCK_DIV1;
 	init.count_mode = TMR_COUNT_UP;
 	tmr_reset_ex0(TMR1, &init);
@@ -100,6 +105,14 @@ void HandlerTMR1_BRK_OVF_TRG_HALL(void)
 	if (gCursorCountdown) {
 		gCursorCountdown--;
 	}
+	#ifdef ENABLE_AM_FIX
+	if (gAmFixCountdown) {
+		gAmFixCountdown--;
+	}
+	// AM Fix hold-timer countdown, encapsulated in am-fix.c alongside
+	// the stuck-state watchdog timer.
+	AM_fix_tick();
+	#endif
 	if (gIncomingTimer) {
 		gIncomingTimer--;
 	}
@@ -159,5 +172,9 @@ void HandlerTMR1_BRK_OVF_TRG_HALL(void)
 	if ((SCHEDULER_Counter & 127) == 0) {
 		//SetTask(TASK_FM_SCANNER | TASK_SCANNER);
 		SetTask(TASK_FM_SCANNER);
-		}
+	}
+	if ((SCHEDULER_Counter & 0x3FF) == 0) {
+		SetTask(TASK_1024_c | TASK_AM_FIX | TASK_CHECK_BATTERY);
+		SCHEDULER_Counter = 0;
+	}
 }

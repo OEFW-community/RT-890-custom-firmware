@@ -112,12 +112,6 @@ void SETTINGS_LoadSettings(void)
 		SetDefaultKeyShortcuts(false); //
 	}
 
-if (gExtendedSettings.SqGlitchBase == 0xFF) {
-		gExtendedSettings.SqRSSIBase = 0x5E;
-		gExtendedSettings.SqNoiseBase = 0x44;
-		gExtendedSettings.SqGlitchBase = 0x11;
-	}
-
 	gFrequencyStep = FREQUENCY_GetStep(gSettings.FrequencyStep);
 
 	UI_SetColors(gExtendedSettings.DarkMode);
@@ -125,7 +119,31 @@ if (gExtendedSettings.SqGlitchBase == 0xFF) {
 	if (gExtendedSettings.MicGainLevel > 31) {
 		gExtendedSettings.MicGainLevel = 19;
 	}
+
+	// ScanResume is only ever meant to be 1/2/3 (Carrier/Time/No -
+	// see app/menu.c). A 0 (or anything >3) makes
+	// "gSettingCurrentValue = gExtendedSettings.ScanResume - 1"
+	// underflow, which gets passed straight into a 3-entry array
+	// lookup in UI_DrawSettingScanResume() - confirmed on hardware
+	// to lock up the radio. Validate the same way MicGainLevel is
+	// above, rather than only relying on the CPS to never send 0.
+	if (gExtendedSettings.ScanResume < 1 || gExtendedSettings.ScanResume > 3) {
+		gExtendedSettings.ScanResume = 1;	// Carrier
+	}
 	BK4819_SetMicSensitivityTuning();
+
+	// Scan Range defaults to the full original hardware search range
+	// (10MHz-1.3GHz) on first boot / erased flash (0xFFFFFFFF), so
+	// existing behavior is unchanged until deliberately narrowed via the
+	// "Scan Start"/"Scan Finish" menu items. Also guards against a
+	// corrupt/inverted range (Start >= Finish) falling back to full range
+	// rather than silently breaking VFO scanning.
+	if (gExtendedSettings.ScanRangeStart >= gExtendedSettings.ScanRangeFinish
+			|| gExtendedSettings.ScanRangeStart < 1000000
+			|| gExtendedSettings.ScanRangeFinish > 130000000) {
+		gExtendedSettings.ScanRangeStart = 1000000;	// 10MHz
+		gExtendedSettings.ScanRangeFinish = 130000000;	// 1.3GHz
+	}
 
 	gSettings.bEnableDisplay = 1;
 	if (!gpio_input_data_bit_read(GPIOA, BOARD_GPIOA_KEY_SIDE2)) {

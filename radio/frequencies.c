@@ -33,23 +33,46 @@ uint8_t gSquelchRSSINarrow = 85;
 
 uint32_t FREQUENCY_GetStep(uint8_t StepSetting)
 {
+#if 0 // original setting
 	switch(StepSetting) {
-	case  0: return 25;
-	case  1: return 125;
-	case  2: return 250;
-	case  3: return 500;
-	case  4: return 625;
-	case  5: return 1000;
-	case  6: return 1250;
-	case  7: return 2000;
-	case  8: return 2500;
-	case  9: return 5000;
-	case 10: return 10000;
-	case 11: return 50000;
-	case 12: return 100000;
-	case 13: return 500000;
-	case 14: return 1;
-	default: return 25;
+		case  0: return 25;
+		case  1: return 125;
+		case  2: return 250;
+		case  3: return 500;
+		case  4: return 625;
+		case  5: return 1000;
+		case  6: return 1250;
+		case  7: return 2000;
+		case  8: return 2500;
+		case  9: return 5000;
+		case 10: return 10000;
+		case 11: return 50000;
+		case 12: return 100000;
+		case 13: return 500000;
+		case 14: return 1;
+		default: return 25;
+	}
+#endif
+	switch(StepSetting) {
+		// values * 10Hz
+		case  0: return 1; 		//     10 Hz
+		case  1: return 25; 	//    250 Hz
+		case  2: return 125;	//   1250 Hz
+		case  3: return 250;	//   2500 Hz
+		case  4: return 500;	//  5.00 kHz
+		case  5: return 625;	//  6.25 kHz
+		case  6: return 833;	//  8.33 kHz
+		case  7: return 1000;	// 10.00 kHz
+		case  8: return 1250;	// 12.50 kHz
+		case  9: return 2000;	// 20.00 kHz
+		case 10: return 2500;	// 25.00 kHz
+		case 11: return 5000;	// 50.00 kHz
+		case 12: return 10000;	//100.00 kHz
+		case 13: return 50000;	//500.00 kHz
+		case 14: return 100000;	//  1.00 MHz
+		case 15: return 500000;	//  5.00 MHz
+		default: return 2500;	// 25.00 kHz
+
 	}
 }
 
@@ -107,6 +130,7 @@ void FREQUENCY_SelectBand(uint32_t Frequency)
 #endif
 	gTxPowerLevelLow = gFrequencyBandInfo.TxPowerLevelLow[Level];
 	gTxPowerLevelHigh = gFrequencyBandInfo.TxPowerLevelHigh[Level];
+
 #ifndef ENABLE_ALT_SQUELCH
 	gSquelchNoiseNarrow = gFrequencyBandInfo.SquelchNoiseNarrow[Level];
 	gSquelchRSSINarrow = gFrequencyBandInfo.SquelchRSSINarrow[Level];

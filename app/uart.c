@@ -96,6 +96,18 @@ static void FlashCmd(uint8_t Command, uint8_t Hi, uint8_t Lo)
 		Count = 0x00A;
 		Region = 2;
 		break;
+	case 0x4A:
+		// gExtendedSettings (AM Fix Hysteresis, VHF cutoff, PCB
+		// revision, TX Prohibit, Mic Gain, Scan Range, numpad
+		// shortcuts). Added in r2 for CPS/CHIRP access - nothing
+		// else is stored on this page (verified), and normal
+		// firmware saves (SETTINGS_SaveGlobals) already do a full
+		// page erase+rewrite here via SFLASH_Update, so an
+		// external tool erasing and rewriting the whole page is
+		// consistent with how this page is already treated.
+		Page = 0x3D5;
+		Count = 0x001;
+		break;
 	case 0x4B:
 		Page = 0x3D8;
 		Count = 0x00A;

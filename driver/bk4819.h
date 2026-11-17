@@ -66,7 +66,7 @@ void BK4819_InitDTMF(void);
 bool BK4819_CheckSquelchLink(void);
 void BK4819_EnableTone1(bool bEnable);
 void BK4819_GenTail(bool bIsNarrow);
-void BK4819_SetupPowerAmplifier(uint8_t Bias);
+void BK4819_SetupPowerAmplifier(uint8_t level, uint32_t frequency);
 void BK4819_EnableRfTxDeviation(void);
 void BK4819_SetMicSensitivityTuning(void);
 void BK4819_EnableTX(bool bUseMic);

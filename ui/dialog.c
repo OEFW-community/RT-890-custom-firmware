@@ -26,80 +26,79 @@ void UI_DrawDialogText(UI_DialogText_t Text, bool bSet)
 	gColorForeground = COLOR_FOREGROUND;
 
 	switch (Text) {
-	case DIALOG_FM_RADIO:
+	case DIALOG_AM_FIX:
 		if (bSet) {
-			UI_DrawString(10, 48, "FMB On      ", 12);
+			UI_DrawString(10, 38, "AM Fix On ", 10);
 		} else {
-			UI_DrawString(10, 48, "FMB Idle    ", 12);
+			UI_DrawString(10, 38, "AM Fix Off", 10);
 		}
 		break;
-		
+
 	case DIALOG_TX_PRIORITY:
 		if (bSet) {
-			UI_DrawString(10, 48, "TX PRI: Busy", 12);
+			UI_DrawString(10, 38, "TX Pri Busy", 11);
 		} else {
-			UI_DrawString(10, 48, "TX PRI: Edit", 12);
+			UI_DrawString(10, 38, "TX Pri Edit", 11);
 		}
 		break;
 
 	case DIALOG_VOX:
 		if (bSet) {
-			UI_DrawString(10, 48, "VOX: On ", 8);
+			UI_DrawString(10, 38, "VOX On ", 7);
 		} else {
-			UI_DrawString(10, 48, "VOX: Off", 8);
-		}
-		break;
-		
-	case DIALOG_BAND_WIDTH:
-		if (bSet) {
-			UI_DrawString(10, 48, "BW 12.5 kHz ", 12);
-		} else {
-			UI_DrawString(10, 48, "BW 25.0 kHz ", 12);
+			UI_DrawString(10, 38, "VOX Off", 7);
 		}
 		break;
 		
 	case DIALOG_TX_POWER:
 		if (bSet) {
-			UI_DrawString(10, 48, "Power: Low ", 11);
+			UI_DrawString(10, 38, "Low TX Power ", 13);
 		} else {
-			UI_DrawString(10, 48, "Power: High", 11);
+			UI_DrawString(10, 38, "High TX Power", 13);
 		}
 		break;
 
 	case DIALOG_DUAL_STANDBY:
 		if (bSet) {
-			UI_DrawString(10, 48, "Dual Standby: On ", 17);
+			UI_DrawString(10, 38, "Dual Watch On ", 14);
 		} else {
-			UI_DrawString(10, 48, "Dual Standby: Off", 17);
+			UI_DrawString(10, 38, "Dual Watch Off", 14);
 		}
 		break;
 	
 	case DIALOG_KEY_BEEP:
 		if (bSet) {
-			UI_DrawString(10, 48, "Key Beep: On ", 13);
+			UI_DrawString(10, 38, "Key Beep On ", 12);
 		} else {
-			UI_DrawString(10, 48, "Key Beep: Off", 13);
+			UI_DrawString(10, 38, "Key Beep Off", 12);
 		}
 		break;
 
 	case DIALOG_TOGGLE_SCANLIST:
 		if (bSet) {
-			UI_DrawString(10, 48, "SList: Ch Added  ", 17);
+			UI_DrawString(10, 38, "Add Ch To Bank  ", 16);
 		} else {
-			UI_DrawString(10, 48, "SList: Ch Removed", 17);
+			UI_DrawString(10, 38, "Rem Ch From Bank", 16);
 		}
 		break;
 
-	case DIALOG_PLEASE_CHARGE:
-		UI_DrawString(10, 48, "Please Charge!", 14);
-		break;
+	/*case DIALOG_PLEASE_CHARGE:
+		UI_DrawString(10, 38, "Please Charge!", 14);
+		break;*/
 
 	case DIALOG_NO_CH_AVAILABLE:
-		UI_DrawString(10, 48, "No CH Available", 15);
+		UI_DrawString(10, 38, "No Ch Saved", 11);
+		break;
+
+	case DIALOG_PROHIBIT_TX:
+		if (bSet) {
+			UI_DrawString(10, 38, "Prohibit TX On ", 15);
+		} else {
+			UI_DrawString(10, 38, "Prohibit TX Off", 15);
+		}
 		break;
 	}
 
 	gRedrawScreen = true;
 	VOX_Timer = 1200;
 }
-

@@ -75,5 +75,9 @@ void CHANNELS_SetNoaaChannel(uint8_t Channel);
 #endif
 void CHANNELS_SaveVfo(void);
 
+#ifdef ENABLE_833_RETUNE
+void Snap833Step(uint32_t *frequency);
+#endif
+
 #endif
 

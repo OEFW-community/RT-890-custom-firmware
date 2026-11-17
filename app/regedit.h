@@ -25,6 +25,6 @@ typedef struct Registers {
   uint16_t DiplayDigits;
 } Registers;
 
-void APP_RegEdit(void);
+void APP_RegEdit(uint8_t bFromSpectrum);
 
 #endif

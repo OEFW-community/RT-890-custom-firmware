@@ -41,7 +41,7 @@ static uint16_t AdjustFrequency(uint32_t Frequency)
 		Base = 760;
 	}
 
-	// TODO: Original has some dodgy signed division by 1
+	// TODO: the original implementation performs a signed division by 1 here; review for correctness.
 	return (uint16_t)(Frequency - Base);
 }
 

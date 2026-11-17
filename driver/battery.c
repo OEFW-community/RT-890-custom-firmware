@@ -42,7 +42,7 @@ static void adc_base_config_ex(adc_type *adc, const adc_init_ex_type *init)
 	adc->ctrl1_bit.sqen = init->sequence_mode;
 	adc->ctrl2_bit.rpen = init->repeat_mode;
 	adc->ctrl2_bit.octesel_l = init->trigger_select;
-	// TODO: Ignoring octesel_h until Artery replies to issue.
+	// TODO: octesel_h is intentionally not set pending clarification from Artery on this field.
 	adc->osq1_bit.oclen = init->ordinary_channel_length - 1;
 }
 

@@ -187,7 +187,7 @@ void HARDWARE_Init(void)
 		DELAY_WaitMS(200);
 	}
 
-	// TODO: LEDs will kill SWD, no thanks.
+	// NOTE: LED_Init() is deferred here because enabling the LEDs earlier interferes with SWD debugging.
 	LED_Init();
 
 	SFLASH_Init();

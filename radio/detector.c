@@ -26,6 +26,7 @@
 #include "helper/helper.h"
 #include "misc.h"
 #include "radio/detector.h"
+#include "radio/frequencies.h"
 #include "radio/scheduler.h"
 #include "radio/settings.h"
 #include "task/incoming.h"
@@ -36,6 +37,9 @@
 #include "ui/main.h"
 
 //
+
+// VHF filter cutoff lookup: 0=240MHz 1=280MHz 2=300MHz (menu: VHF Cutoff)
+static const uint32_t vhf_cutoff[3] = { 24000000UL, 28000000UL, 30000000UL };
 
 static uint32_t RoundToNearest50(uint32_t Frequency)
 {
@@ -52,6 +56,7 @@ static uint32_t RoundToNearest50(uint32_t Frequency)
 static bool CheckScanResult(void)
 {
 	uint32_t Frequency;
+	uint32_t cutoff;
 	uint16_t Timeout;
 	uint16_t Result;
 
@@ -72,8 +77,9 @@ static bool CheckScanResult(void)
 	Frequency = (Result & 0x07FF) << 16;
 	Frequency |= BK4819_ReadRegister(0x0E);
 
-	if (!gSettings.bUseVHF || Frequency <= 24000000) {
-		if (!gSettings.bUseVHF && Frequency < 24000000) {
+	cutoff = vhf_cutoff[(gExtendedSettings.VhfCutoff < 3) ? gExtendedSettings.VhfCutoff : 0];
+	if (!gSettings.bUseVHF || Frequency <= cutoff) {
+		if (!gSettings.bUseVHF && Frequency < cutoff) {
 			Frequency *= 2U;
 		}
 	} else {
@@ -118,7 +124,6 @@ static void CtdcScan(void)
 static void StopDetect(void)
 {
 	gFrequencyDetectMode = false;
-	gSettings.DualDisplay = 1; // always returns to Dual Display even if started im single M7OCM 27022024
 	SCREEN_TurnOn();
 
 	if (gSettings.WorkMode) {

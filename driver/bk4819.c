@@ -24,12 +24,31 @@
 #include "helper/helper.h"
 #include "misc.h"
 #include "radio/settings.h"
+#include <stddef.h>
+
+// PA Control register (0x36) bit field layout.
+// Must match REGx36 in driver/bk4819.h if that header is later updated.
+typedef union {
+	struct {
+		uint16_t  PA_Gain2  : 3;   // bits [2:0]  — second gain stage
+		uint16_t  PA_Gain1  : 3;   // bits [5:3]  — first gain stage
+		uint16_t  _res6     : 1;   // bit  [6]    — reserved
+		uint16_t  PA_Enable : 1;   // bit  [7]    — PA on/off
+		uint16_t  PA_Bias   : 8;   // bits [15:8] — bias current
+	};
+	uint16_t val;
+} REGx36;
 
 enum {
 	GPIO_FILTER_UHF     = 1U << 5,
-	GPIO_FILTER_VHF     = 1U << 6,
+	GPIO_FILTER_VHF_2_0 = 1U << 6,	// PCB 2.0
+	GPIO_FILTER_VHF_2_1 = 1U << 3,	// PCB 2.1
 	GPIO_FILTER_UNKWOWN = 1U << 7,
 };
+
+// Runtime helper — returns correct VHF filter bit for active PCB revision
+#define GPIO_FILTER_VHF \
+	(gExtendedSettings.PcbVersion ? GPIO_FILTER_VHF_2_1 : GPIO_FILTER_VHF_2_0)
 
 static void Delay(volatile uint8_t Counter)
 {
@@ -103,7 +122,7 @@ static uint16_t I2C_RecvU16(void)
 #if 0
 static void DisableAGC(uint32_t Unknown)
 {
-	BK4819_WriteRegister(0x13, 0x03BE);
+	BK4819_WriteRegister(0x13, 0x03FF);
 	BK4819_WriteRegister(0x12, 0x037B);
 	BK4819_WriteRegister(0x11, 0x027B);
 	BK4819_WriteRegister(0x10, 0x007A);
@@ -188,8 +207,8 @@ void BK4819_Init(void)
 	BK4819_WriteRegister(0x00, 0x8000);
 	BK4819_WriteRegister(0x00, 0x0000);
 	BK4819_WriteRegister(0x37, 0x1D0F);
-	// DisableAGC(0);
-	BK4819_WriteRegister(0x33, 0x1F00);
+	// PCB 2.1 uses different GPIO filter mapping for register 0x33
+	BK4819_WriteRegister(0x33, gExtendedSettings.PcbVersion ? 0x5700 : 0x1F00);
 	BK4819_WriteRegister(0x35, 0x0000);
 	BK4819_WriteRegister(0x1E, 0x4C58);
 	BK4819_WriteRegister(0x1F, 0xA656);
@@ -199,7 +218,7 @@ void BK4819_Init(void)
 	BK4819_WriteRegister(0x53, 0xE678);
 	BK4819_WriteRegister(0x2C, 0x5705);
 	BK4819_WriteRegister(0x4B, 0x7102);
-	BK4819_WriteRegister(0x77, 0x88EF);
+	//BK4819_WriteRegister(0x77, 0x88EF);
 	BK4819_WriteRegister(0x26, 0x13A0);
 	BK4819_SetAFResponseCoefficients(false, true,  gCalibration.RX_3000Hz_Coefficient);
 	BK4819_SetAFResponseCoefficients(false, false, gCalibration.RX_300Hz_Coefficient);
@@ -207,6 +226,7 @@ void BK4819_Init(void)
 	BK4819_SetAFResponseCoefficients(true,  false, gCalibration.TX_300Hz_Coefficient);
 	BK4819_EnableRX();
 	BK4819_SetAF(BK4819_AF_MUTE);
+	BK4819_RestoreGainSettings();
 }
 
 void BK4819_SetAFResponseCoefficients(bool bTx, bool bLowPass, uint8_t Index)
@@ -280,13 +300,26 @@ void BK4819_SetSquelchGlitch(bool bIsNarrow)
 #ifdef ENABLE_ALT_SQUELCH
 	uint16_t Value;
 
+	static const uint8_t SquelchGlitchOpenLevel[10] = {
+		0x5A,
+		0x10,
+		0x9,
+		0x8,
+		0x7,
+		0x6,
+		0x5,
+		0x4,
+		0x3,
+		0x2,
+	};
+
 	if (gSettings.Squelch == 0){
 		Value = 255;
 	} else {
-		Value = gExtendedSettings.SqGlitchBase - (gSettings.Squelch);
+		Value = SquelchGlitchOpenLevel[gSettings.Squelch];
 	}
 
-	BK4819_WriteRegister(0x4E, (BK4819_ReadRegister(0x4E) & 0xFF) | Value);
+	BK4819_WriteRegister(0x4E, (BK4819_ReadRegister(0x4E) & 0xFF00) | Value);
 
 	if (gSettings.Squelch == 0){
 		Value = 255;
@@ -294,12 +327,12 @@ void BK4819_SetSquelchGlitch(bool bIsNarrow)
 		Value = (Value * 10) / 9;
 	}
 
-	BK4819_WriteRegister(0x4D, (BK4819_ReadRegister(0x4D) & 0xFF) | Value);
+	BK4819_WriteRegister(0x4D, 0xA0 << 8 | Value);
 #else
 
 	static const uint8_t gSquelchGlitchLevel[11] = {
 		0x20,
-		0x20,
+		0x1F,  // was 0x20 (same as level 0), now distinct
 		0x1E,
 		0x1C,
 		0x1A,
@@ -328,24 +361,38 @@ void BK4819_SetSquelchNoise(bool bIsNarrow)
 
 	uint16_t Value;
 
+	static const uint8_t SquelchNoiseOpenLevel[10] = {
+		0xB4,
+		0x3E,
+		0x38,
+		0x32,
+		0x2C,
+		0x26,
+		0x20,
+		0x1A,
+		0x14,
+		0x0E,
+	};
+
 	if (gSettings.Squelch == 0){
 		Value = (127 << 8) | 127;
 	} else {
-		Value = gExtendedSettings.SqNoiseBase - (gSettings.Squelch * 6);
+		Value = SquelchNoiseOpenLevel[gSettings.Squelch];
 		if (bIsNarrow) {
-			Value = ((((Value - 5) * 10) / 9) << 8) | Value;
+			uint8_t closeVal = (Value > 5) ? Value - 5 : 0;  // clamp to prevent underflow
+			Value = ((((closeVal * 10) / 9) << 8) | Value);
 		} else {
 			Value = (((Value * 10) / 9) << 8) | Value;
-		 }
+		}
 	}
 
-	BK4819_WriteRegister(0x4F, (BK4819_ReadRegister(0x4F) & 0x7F7F) | Value);
+	BK4819_WriteRegister(0x4F, Value);
 
 #else
 
 	static const uint8_t gSquelchNoiseLevel[11] = {
 		0x0A,
-		0x0A,
+		0x09,  // was 0x0A (same as level 0), now distinct
 		0x09,
 		0x08,
 		0x07,
@@ -379,11 +426,24 @@ void BK4819_SetSquelchRSSI(bool bIsNarrow)
 
 	uint16_t Value;
 
+	static const uint8_t SquelchRssiOpenLevel[10] = {
+		0x0A,
+		0x66,
+		0x6E,
+		0x76,
+		0x7E,
+		0x86,
+		0x8E,
+		0x96,
+		0x9E,
+		0xA6,
+	};
+
 	if (gSettings.Squelch == 0){
 		Value = 0;
 	} else {
-		Value = gExtendedSettings.SqRSSIBase + (gSettings.Squelch * 8);
-		Value = (Value << 8) | (Value * 9) / 10;
+		Value = SquelchRssiOpenLevel[gSettings.Squelch];
+		Value = (Value << 8) | (Value * 82) / 100;  // ~18% hysteresis gap (was 10%)
 	}
 
 	BK4819_WriteRegister(0x78, Value);
@@ -425,13 +485,9 @@ void BK4819_SetFilterBandwidth(bool bIsNarrow)
 	if (gMainVfo->gModulationType == 0) { // if FM
 #ifndef ENABLE_REGISTER_EDIT
 		if (bIsNarrow) {
-			//BK4819_WriteRegister(0x43, 0x4048); //stock
-			BK4819_WriteRegister(0x43, 0x7B08); //kamil/fagci
-			//BK4819_WriteRegister(0x43, 0x4408); //egzumer
+			BK4819_WriteRegister(0x43, 0x4048);// 0x4048 stock seems to work better on PCB 2.1, (OEFWCOM 0x1408)
 		} else {
-			//BK4819_WriteRegister(0x43, 0x3028); //stock
-			BK4819_WriteRegister(0x43, 0x3428); //kamil/fagci
-			//BK4819_WriteRegister(0x43, 0x45A8); //egzumer
+			BK4819_WriteRegister(0x43, 0x3028);// 0x4048 stock seems to work better on PCB 2.1, (OEFWCOM 0x1408)
 		}
 #else
 		uint16_t Value = BK4819_ReadRegister(0x43); 
@@ -513,23 +569,17 @@ void BK4819_EnableVox(bool bEnable)
 
 void BK4819_RestoreGainSettings()
 {
-	/* Keep for now, may be useful for register editing
-	const uint8_t orig_lna_short = 2;
-            const uint8_t orig_lna = 5;
-            const uint8_t orig_mixer = 2;
-            const uint8_t orig_pga = 5;
-			if(BK4819_ReadRegister(0x13) != ((orig_lna_short << 8) | (orig_lna << 5) | (orig_mixer << 3) | (orig_pga << 0))) {
-            	BK4819_WriteRegister(0x13, (orig_lna_short << 8) | (orig_lna << 5) | (orig_mixer << 3) | (orig_pga << 0));
-			}
-	*/
-	
-	//Default values
-	BK4819_WriteRegister(0x10, 0x0038);  
-	BK4819_WriteRegister(0x11, 0x025a);  
-	BK4819_WriteRegister(0x12, 0x037b); 
-	BK4819_WriteRegister(0x13, 0x03de);
-	BK4819_WriteRegister(0x14, 0x0000); 
-}
+	// REG_13: LNA Short[9:8], LNA[7:5], Mixer[4:3], PGA[2:0]
+	// REG_10: AGC gain table index (used when AGC is in fixed mode)
+	// Default values tuned for VHF/UHF airband reception
+	// 0x03BE matches am-fix original_index 90 (LNAS=3, LNA=5, MIX=3, PGA=6, -7dB)
+	// so toggling AM fix on/off causes no abrupt gain jump
+	BK4819_WriteRegister(0x13, 0x03BE);  // match am-fix original_index (-7dB)
+	BK4819_WriteRegister(0x12, 0x037B);  // AGC gain table entry 2
+	BK4819_WriteRegister(0x11, 0x027B);  // AGC gain table entry 1
+	BK4819_WriteRegister(0x10, 0x007A);  // AGC gain table entry 0
+	BK4819_WriteRegister(0x14, 0x0019);  // AGC speed
+}	
 
 void BK4819_ToggleAGCMode()
 {
@@ -706,16 +756,86 @@ void BK4819_GenTail(bool bIsNarrow)
 	}
 }
 
-void BK4819_SetupPowerAmplifier(uint8_t Bias)
+void BK4819_SetupPowerAmplifier(uint8_t level, uint32_t frequency)
 {
-	uint16_t Value;
+	REGx36 reg;
+	reg._res6 = 0;
 
-	Value = (Bias << 10) | 0x7F;
-	if (Bias) {
-		Value |= 0x80;
+	// PMR446: 446.00625-446.19375 MHz (10 Hz units).
+	// ERC/REC 70-03 annex 8 — fixed 0.5 W ERP max, no user power control.
+	// Check frequency FIRST before anything else so high power setting
+	// cannot bypass this — it is a legal requirement not a user preference.
+#define PMR446_FREQ_LOW   44599000U   // extended low to catch 446.000 MHz
+#define PMR446_FREQ_HIGH  44619375U
+	const bool bPMR446 = (frequency >= PMR446_FREQ_LOW && frequency <= PMR446_FREQ_HIGH);
+
+	if (level == 0) {
+		// PA fully off - used by RADIO_EndTX()
+		reg.PA_Bias   = 0;
+		reg.PA_Gain1  = 0;
+		reg.PA_Gain2  = 0;
+		reg.PA_Enable = 0;
+		BK4819_WriteRegister(0x36, reg.val);
+		return;
 	}
 
-	BK4819_WriteRegister(0x36, Value);
+	// ----------------------------------------------------------------
+	// HIGH POWER: maximum gains, flash calibration bias.
+	// PMR446 is explicitly excluded and falls through to low power path.
+	// ----------------------------------------------------------------
+	if (!gMainVfo->bIsLowPower && !bPMR446) {
+		reg.PA_Gain1  = 7;
+		reg.PA_Gain2  = 7;
+		reg.PA_Enable = 1;
+		reg.PA_Bias   = level;   // gTxPowerLevelHigh from flash
+		BK4819_WriteRegister(0x36, reg.val);
+		return;
+	}
+
+	// ----------------------------------------------------------------
+	// LOW POWER: reduced gain stages + fixed per-band bias values.
+	// gTxPowerLevelLow from flash was calibrated for OEM max-gain
+	// settings and is not usable here.  These bias values are starting
+	// points — measure with a wattmeter and adjust to taste.
+	//
+	// Target: ~0.5 W on all bands.
+	//
+	// Band boundaries match FREQUENCY_SelectBand() in frequencies.c
+	// (all values in 10 Hz units).
+	// ----------------------------------------------------------------
+
+	// PMR446 bias — tuned from wattmeter. 0x10 gave 0.57 W; 0x0E targets 0.5 W.
+#define PMR446_PA_BIAS    0x14U   // 0x0E gave 0.14 W on Ch1; raised toward 0.5 W
+
+	// VHF: 136-280 MHz
+#define VHF_LOW_PA_GAIN1  1
+#define VHF_LOW_PA_GAIN2  2
+#define VHF_LOW_PA_BIAS   0x16U   // 0x18 gave 0.78 W, 0x10 gave 0 W; midpoint toward 0.5 W
+
+	// UHF: 280-560 MHz (covers 70cm and PMR446)
+#define UHF_LOW_PA_GAIN1  2
+#define UHF_LOW_PA_GAIN2  4
+#define UHF_LOW_PA_BIAS   0x12U   // 0x18 gave 0.67 W, 0x12 gave 0.46 W — close to target
+
+	if (frequency >= PMR446_FREQ_LOW && frequency <= PMR446_FREQ_HIGH) {
+		// PMR446 — legal hard clamp, same gain as UHF low
+		reg.PA_Gain1 = UHF_LOW_PA_GAIN1;
+		reg.PA_Gain2 = UHF_LOW_PA_GAIN2;
+		reg.PA_Bias  = PMR446_PA_BIAS;
+	} else if (frequency >= 13600000U && frequency < 28000000U) {
+		// VHF 136-174 MHz and 174-240 MHz bands
+		reg.PA_Gain1 = VHF_LOW_PA_GAIN1;
+		reg.PA_Gain2 = VHF_LOW_PA_GAIN2;
+		reg.PA_Bias  = VHF_LOW_PA_BIAS;
+	} else {
+		// UHF 240-560 MHz bands
+		reg.PA_Gain1 = UHF_LOW_PA_GAIN1;
+		reg.PA_Gain2 = UHF_LOW_PA_GAIN2;
+		reg.PA_Bias  = UHF_LOW_PA_BIAS;
+	}
+
+	reg.PA_Enable = 1;
+	BK4819_WriteRegister(0x36, reg.val);
 }
 
 void BK4819_EnableRfTxDeviation(void)

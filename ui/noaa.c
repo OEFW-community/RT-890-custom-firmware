@@ -18,19 +18,12 @@
 #include "ui/gfx.h"
 #include "ui/helper.h"
 #include "ui/noaa.h"
+#include "misc.h"
 
-static const uint32_t gNoaaFrequencyTable[11] = {
-	16255000,
-	16240000,
-	16247500,
-	16242500,
-	16245000,
-	16250000,
-	16252500,
-	16165000,
-	16177500,
-	16175000,
-	16200000,
+static const uint32_t gNoaaFrequencyTable[3] = {
+	16072500,// MCA MSI CH62 (Maritime Safety Information)
+	16077500,// MCA MSI CH63 (Maritime Safety Information)
+	16082500,// MCA MSI CH64 (Maritime Safety Information)
 };
 
 void UI_DrawNOAA(uint8_t Channel)
@@ -40,8 +33,10 @@ void UI_DrawNOAA(uint8_t Channel)
 	UI_DrawString( 8, 64, gShortString, 3);
 	UI_DrawString(32, 64, ".", 1);
 	UI_DrawString(40, 64, gShortString + 3, 5);
-	Int2Ascii(Channel + 1, 2);
-	UI_DrawString(32, 32, gShortString, 2);
+	UI_DrawSmallString( 8, 32, "MSI CH ", 7);
+	Int2Ascii(Channel + 62, 2);
+	UI_DrawSmallString(50, 32, gShortString, 2);
 	gColorForeground = COLOR_FOREGROUND;
+	gScreenMode = SCREEN_NOAA;
 }
 

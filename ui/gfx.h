@@ -22,33 +22,12 @@
 // RGB565
 #define COLOR_RGB(r, g, b) ((r & 0x1F) | (((g) & 0x3F) << 5) | (((b) & 0x1F) << 11))
 
-/*
-enum {
-	#ifndef LIGHT_THEME
-	COLOR_BACKGROUND = COLOR_RGB( 0,  0,  0),
-	#else
-	COLOR_BACKGROUND = COLOR_RGB(31, 63, 31),
-	#endif
-	COLOR_RED   = COLOR_RGB(31,  0,  0),
-	COLOR_GREEN = COLOR_RGB( 0, 63,  0),
-	COLOR_BLUE  = COLOR_RGB( 0,  0, 31),
-	COLOR_GREY  = COLOR_RGB(16, 32, 16),
-	#ifndef LIGHT_THEME
-	COLOR_FOREGROUND = COLOR_RGB(31, 63, 31),
-	#else
-	COLOR_FOREGROUND = COLOR_RGB( 0,  0,  0),
-	#endif
-};
-*/
-
 extern uint16_t COLOR_BACKGROUND;
 extern uint16_t COLOR_FOREGROUND;
 extern uint16_t COLOR_RED;
 extern uint16_t COLOR_GREEN;
 extern uint16_t COLOR_BLUE;
 extern uint16_t COLOR_GREY;
-// extern uint16_t COLOR_WHITE; // added
-// extern uint16_t COLOR_BLACK; // added
 
 extern uint16_t gColorForeground;
 extern uint16_t gColorBackground;

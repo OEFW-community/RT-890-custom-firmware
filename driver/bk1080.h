@@ -21,6 +21,7 @@
 #include <stdint.h>
 
 void BK1080_Init(void);
+void BK1080_PowerOn(void);
 void BK1080_WriteRegisters(uint8_t Index, const uint8_t *pValues, uint8_t Size);
 void BK1080_ReadRegisters(uint8_t Index, uint8_t *pValues, uint8_t Size);
 

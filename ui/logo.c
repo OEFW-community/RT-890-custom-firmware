@@ -23,31 +23,28 @@
 
 static void DrawImage(uint32_t Address)
 {
-	uint16_t i;
-	uint8_t X = 0;
-	uint8_t Y = 0;
+        uint16_t i;
+        uint8_t X = 0;
+        uint8_t Y = 0;
 
-	for (i = 0; i < 0x7800; i += 2) {
-		uint16_t Color;
+        for (i = 0; i < 0x7800; i += 2) {
+                uint16_t Color;
 
-		if ((i & 0x1FFF) == 0) {
-			SFLASH_Read(gFlashBuffer, Address + i, sizeof(gFlashBuffer));
-		}
-		Color = (gFlashBuffer[i & 0x1FFF] << 8) | gFlashBuffer[(i + 1) & 0x1FFF];
-		if (Color != 0) {
-			ST7735S_SetPixel(X, Y, Color);
-		}
-		X++;
-		if (X == 160) {
-			X = 0;
-			Y++;
-		}
-	}
+                if ((i & 0x1FFF) == 0) {
+                        SFLASH_Read(gFlashBuffer, Address + i, sizeof(gFlashBuffer));
+                }
+                Color = (gFlashBuffer[i & 0x1FFF] << 8) | gFlashBuffer[(i + 1) & 0x1FFF];
+                ST7735S_SetPixel(X, Y, Color);
+                X++;
+                if (X == 160) {
+                        X = 0;
+                        Y++;
+                }
+        }
 }
 
 void UI_DrawLogo(void)
 {
 	DrawImage(0x3B5000);
-	DELAY_WaitMS(750);
+	DELAY_WaitMS(2000);
 }
-
