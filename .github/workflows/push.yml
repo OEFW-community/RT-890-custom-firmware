@@ -27,7 +27,7 @@ jobs:
       run: |
         mv firmware.bin firmware.bin.default
         make clean
-        make ENABLE_MULTIBOOT=1 ENABLE_NOAA=0 ENABLE_FREQ_DETECTOR=0
+        make ENABLE_MULTIBOOT=1 ENABLE_NOAA=0 ENABLE_REGISTER_EDIT=0
         arm-none-eabi-size -A firmware | grep -E '^\.(text|fill|mb_ramfunc) '
         mv firmware.bin firmware-multiboot.bin
         mv firmware.bin.default firmware.bin

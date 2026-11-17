@@ -61,7 +61,9 @@ void UI_DrawDialog(void);
 void UI_DrawBar(uint8_t Level, uint8_t Vfo);
 void UI_DrawSomething(void);
 void UI_DrawMainBitmap(bool bOverride, uint8_t Vfo);
+#ifdef ENABLE_NOAA
 void UI_DrawSky(void);
+#endif
 void UI_DrawFrequencyEx(const char *String, uint8_t Vfo, bool bFlag);
 void UI_DrawBootVoltage(uint8_t X, uint8_t Y);
 void UI_DrawDecimal(const char *pInput);
