@@ -26,11 +26,7 @@ static void DrawBandwidth(bool bIsNarrow, uint8_t Vfo)
 	const uint8_t Y = 43 - (Vfo * 41);
 
 	gColorForeground = COLOR_FOREGROUND;
-	if (bIsNarrow) {
-		UI_DrawSmallString(150, Y, "N", 1);
-	} else {
-		UI_DrawSmallString(150, Y, "W", 1);
-	}
+	UI_DrawSmallCharacter(150, Y, bIsNarrow ? 'N' : 'W');
 }
 
 void UI_DrawVfo(uint8_t Vfo)
@@ -84,7 +80,7 @@ void UI_DrawVfo(uint8_t Vfo)
 		UI_DrawCss(gVfoInfo[Vfo].CodeType, gVfoInfo[Vfo].Code, gVfoState[Vfo].Encrypt, gVfoState[Vfo].bMuteEnabled, Vfo);
 	}
 
-	UI_DrawTxPower(gVfoState[Vfo].bIsLowPower, Vfo);
+	UI_DrawTxPower(Vfo, false);
 	gColorForeground = COLOR_FOREGROUND;
 	if (WORKMODE(Vfo)) {
 		UI_DrawChannel(gSettings.VfoChNo[Vfo], Vfo);
