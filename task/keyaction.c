@@ -290,7 +290,7 @@ void KeypressAction(uint8_t Action) {
 			case ACTION_TX_POWER:
 				RADIO_CancelMode();
 				gVfoState[gSettings.CurrentVfo].bIsLowPower ^= 1;
-				UI_DrawTxPower(gVfoState[gSettings.CurrentVfo].bIsLowPower, gSettings.CurrentVfo);
+				UI_DrawTxPower(gSettings.CurrentVfo, false);
 				CHANNELS_SaveVfo();
 				UI_DrawDialogText(DIALOG_TX_POWER, gVfoState[gSettings.CurrentVfo].bIsLowPower);
 				break;

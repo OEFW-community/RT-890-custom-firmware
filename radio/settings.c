@@ -95,6 +95,24 @@ void SETTINGS_LoadCalibration(void)
 	}
 }
 
+// Returns true when the given side key and # are held at power on, and
+// waits for both to be released.
+static bool CheckBootCombo(gpio_type *pPort, uint16_t Pin)
+{
+	if (gpio_input_data_bit_read(pPort, Pin) || KEY_GetButton() != KEY_HASH) {
+		return false;
+	}
+	do {
+		while (!gpio_input_data_bit_read(pPort, Pin)) {
+		}
+	} while (KEY_GetButton() == KEY_HASH);
+	KEY_Side1Counter = 0;
+	KEY_Side2Counter = 0;
+	KEY_KeyCounter = 0;
+
+	return true;
+}
+
 void SETTINGS_LoadSettings(void)
 {
 	SFLASH_Read(WelcomeString, 0x3C1000, sizeof(WelcomeString));
@@ -131,17 +149,15 @@ void SETTINGS_LoadSettings(void)
 	BK4819_SetMicSensitivityTuning();
 
 	gSettings.bEnableDisplay = 1;
-	if (!gpio_input_data_bit_read(GPIOA, BOARD_GPIOA_KEY_SIDE2)) {
-		if (KEY_GetButton() == KEY_HASH) {
-			gSettings.bFLock ^= 1;
-			SETTINGS_SaveGlobals();
-			do {
-				while (!gpio_input_data_bit_read(GPIOA, BOARD_GPIOA_KEY_SIDE2)) {
-				}
-			} while (KEY_GetButton() == KEY_HASH);
-			KEY_Side2Counter = 0;
-			KEY_KeyCounter = 0;
-		}
+	// SIDE2 + #: frequency lock
+	if (CheckBootCombo(GPIOA, BOARD_GPIOA_KEY_SIDE2)) {
+		gSettings.bFLock ^= 1;
+		SETTINGS_SaveGlobals();
+	}
+	// SIDE1 + #: TX lock (RX only)
+	if (CheckBootCombo(GPIOF, BOARD_GPIOF_KEY_SIDE1)) {
+		gSettings.bTxLock ^= 1;
+		SETTINGS_SaveGlobals();
 	}
 }
 
@@ -172,15 +188,18 @@ void SETTINGS_SaveDTMF(void)
 void SETTINGS_FactoryReset(void)
 {
 	uint8_t Lock;
+	uint8_t TxLock;
 	uint8_t i;
 
 	Lock = gSettings.bFLock;
+	TxLock = gSettings.bTxLock;
 	for (i = 0; i < 10; i++) {
 		SFLASH_Read(gFlashBuffer, 0x3CB000 + (i * 0x1000), 0x1000);
 		SFLASH_Update(gFlashBuffer, 0x3C1000 + (i * 0x1000), 0x1000);
 	}
 	SFLASH_Read(&gSettings, 0x3C1030, sizeof(gSettings));
 	gSettings.bFLock = Lock;
+	gSettings.bTxLock = TxLock;
 	SETTINGS_SaveGlobals();
 }
 

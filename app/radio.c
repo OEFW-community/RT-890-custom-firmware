@@ -498,6 +498,14 @@ void RADIO_SaveCurrentVfo(void)
 
 void RADIO_StartTX(bool bUseMic)
 {
+	// Single gate for every transmission (PTT, VOX, alarm, tone, ...).
+	// Alarms and tones keep sounding locally until a key is pressed.
+	if (gSettings.bTxLock) {
+		if (gScreenMode == SCREEN_MAIN) {
+			UI_DrawTxPower(gSettings.CurrentVfo, true);
+		}
+		return;
+	}
 	if (gRadioMode == RADIO_MODE_RX) {
 		RADIO_EndRX();
 	}

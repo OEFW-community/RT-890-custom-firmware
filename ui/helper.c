@@ -31,7 +31,7 @@
 #include "ui/helper.h"
 #include "ui/vfo.h"
 
-static const uint8_t FontSmall[47][5] = {
+static const uint8_t FontSmall[48][5] = {
 	{ 0x00, 0x00, 0x00, 0x00, 0x00 },
 	{ 0x10, 0x10, 0x10, 0x10, 0x10 },
 	{ 0x00, 0x00, 0x80, 0x00, 0x00 },
@@ -79,6 +79,8 @@ static const uint8_t FontSmall[47][5] = {
 	{ 0xC6, 0x28, 0x10, 0x28, 0xC6 },
 	{ 0x06, 0x08, 0xF0, 0x08, 0x06 },
 	{ 0xC2, 0xA2, 0x92, 0x8A, 0x86 },
+	// CHAR_TX_LOCK: circle with a slash
+	{ 0x7C, 0xE2, 0x92, 0x8E, 0x7C },
 };
 
 static const uint16_t FontBigDigits[][10] = {
@@ -239,7 +241,7 @@ void UI_DrawSmallCharacter(uint8_t X, uint8_t Y, char Digit)
 	uint8_t i;
 
 	Base = 0;
-	if (Digit >= '-' && Digit <= 'Z') {
+	if (Digit >= '-' && Digit <= CHAR_TX_LOCK) {
 		Base = (Digit - '-') + 1;
 	}
 	for (i = 0; i < 5; i++) {
@@ -510,17 +512,23 @@ void UI_DrawCss(uint8_t CodeType, uint16_t Code, uint8_t Encrypt, bool bMute, ui
 	}
 }
 
-void UI_DrawTxPower(bool bIsLow, uint8_t Vfo)
+// Draws H/L, or a slashed circle when TX is locked: grey at rest, red while
+// a blocked transmission is attempted.
+void UI_DrawTxPower(uint8_t Vfo, bool bTxBlocked)
 {
-	uint8_t Y = 43 - (Vfo * 41);
+	char Power;
 
-	if (bIsLow) {
+	if (gSettings.bTxLock) {
+		gColorForeground = bTxBlocked ? COLOR_RED : COLOR_GREY;
+		Power = CHAR_TX_LOCK;
+	} else if (gVfoState[Vfo].bIsLowPower) {
 		gColorForeground = COLOR_RED;
-		UI_DrawSmallString(132, Y, "L", 1);
+		Power = 'L';
 	} else {
 		gColorForeground = COLOR_GREEN;
-		UI_DrawSmallString(132, Y, "H", 1);
+		Power = 'H';
 	}
+	UI_DrawSmallCharacter(132, 43 - (Vfo * 41), Power);
 }
 
 void ConvertRssiToDbm(uint16_t Rssi) {

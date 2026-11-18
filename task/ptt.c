@@ -116,6 +116,10 @@ void Task_CheckPTT(void)
 			}
 		}
 	} else {
+		if (gSettings.bTxLock && gPttCounter && gScreenMode == SCREEN_MAIN) {
+			// Back to grey once the blocked PTT is released
+			UI_DrawTxPower(gSettings.CurrentVfo, false);
+		}
 		gPttCounter = 0;
 		gPttPressed = false;
 		gPttTimeout = 0;

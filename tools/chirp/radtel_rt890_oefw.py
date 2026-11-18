@@ -120,7 +120,7 @@ struct {
      unknown_0b_0:1;
   ul16 vfo_ch_no[2];
   u8 actions[4];
-  u8 unknown_14_7:1,
+  u8 tx_lock:1,
      freq_lock:1,
      current_vfo:1,
      tail_tone:1,
@@ -945,6 +945,8 @@ class RT890OEFWRadio(chirp_common.CloneModeRadio):
         self._add_bool(group, _set, "freq_lock",
                        "Frequency lock (108-136, 144-146, 430-440 MHz)",
                        doc="Same as holding side key 2 and # at power on")
+        self._add_bool(group, _set, "tx_lock", "TX lock (RX only)",
+                       doc="Same as holding side key 1 and # at power on")
 
         def set_fm(value):
             _set.fm_frequency = int(round(value * 10))

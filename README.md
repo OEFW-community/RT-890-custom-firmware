@@ -30,6 +30,8 @@ Use at your own risk and remember to [back up your SPI memory](https://github.co
 - Spectrum view with waterfall display
 - Reworked main menu
 - Ability to disable LED toggling when scanning
+- Independant VFO work mode (frequency/channel)
+- TX lock (receive only): hold side key 1 and # at power on to toggle it, a grey ⊘ replaces the TX power (red when PTT is pressed)
 - Optional multiboot / multiconfig build: up to five firmwares and configurations, selected at power on (see [Multiboot](#multiboot))
 - And much more!
 
