@@ -178,19 +178,19 @@ void DrawLabels(void) {
 	if (!DisplayMode) {
 		UI_DrawSmallString(146, 84, gShortString, 2);
 
-		UI_DrawSmallString(152, 72, (bFilterEnabled) ? "F" : "U", 1);
+		UI_DrawSmallCharacter(152, 72, (bFilterEnabled) ? 'F' : 'U');
 
-		UI_DrawSmallString(152, 60, (bNarrow) ? "N" : "W", 1);	
+		UI_DrawSmallCharacter(152, 60, (bNarrow) ? 'N' : 'W');
 
-		UI_DrawSmallString(136, 84, (bHold) ? "H" : " ", 1);
+		UI_DrawSmallCharacter(136, 84, (bHold) ? 'H' : ' ');
 	} else {
 		UI_DrawSmallString(32, 72, gShortString, 2);
 
-		UI_DrawSmallString(2, 60, (bFilterEnabled) ? "F" : "U", 1);
+		UI_DrawSmallCharacter(2, 60, (bFilterEnabled) ? 'F' : 'U');
 
-		UI_DrawSmallString(15, 60, (bNarrow) ? "N" : "W", 1);	
+		UI_DrawSmallCharacter(15, 60, (bNarrow) ? 'N' : 'W');
 
-		UI_DrawSmallString(30, 60, (bHold) ? "H" : " ", 1);
+		UI_DrawSmallCharacter(30, 60, (bHold) ? 'H' : ' ');
 	}
 
 	gColorForeground = COLOR_GREY;
