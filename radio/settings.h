@@ -93,7 +93,7 @@ typedef struct __attribute__((packed)) {
 	uint8_t TailTone:1;
 	uint8_t CurrentVfo:1;
 	uint8_t bFLock:1;
-	uint8_t Unknown10:1;
+	uint8_t bTxLock:1;
 	// 0x15
 	uint8_t WelcomeX;
 	uint8_t WelcomeY;

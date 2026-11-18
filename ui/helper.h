@@ -33,6 +33,9 @@ enum UI_Icon_t {
 
 typedef enum UI_Icon_t UI_Icon_t;
 
+// Character right after 'Z' in the small font, drawn as a slashed circle
+#define CHAR_TX_LOCK '['
+
 void UI_DrawString(uint8_t X, uint8_t Y, const char *String, uint8_t Size);
 void UI_DrawSmallCharacter(uint8_t X, uint8_t Y, char Digit);
 void UI_DrawDigits(const char *pDigits, uint8_t Vfo);
@@ -50,7 +53,7 @@ void ConvertRssiToDbm(uint16_t Rssi);
 void ConvertRssiToSmeter(uint16_t Rssi);
 void UI_DrawRxDBM(uint8_t Vfo, bool Clear);
 void UI_DrawRxSmeter (uint8_t Vfo, bool Clear);
-void UI_DrawTxPower(bool bIsLow, uint8_t Vfo);
+void UI_DrawTxPower(uint8_t Vfo, bool bTxBlocked);
 void UI_DrawChannel(uint16_t Channel, uint8_t Vfo);
 void UI_DrawRX(uint8_t Vfo);
 void UI_DrawDTMF(void);
